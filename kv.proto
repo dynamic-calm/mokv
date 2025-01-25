@@ -5,7 +5,7 @@ package kv;
 option go_package = "github.com/mateopresacastro/kv";
 
 message GetRequest {
-    bytes key = 1;
+    string key = 1;
 }
 
 message GetResponse {
@@ -14,7 +14,7 @@ message GetResponse {
 }
 
 message SetRequest {
-    bytes key = 1;
+    string key = 1;
     bytes value = 2;
 }
 
@@ -23,7 +23,7 @@ message SetResponse {
 }
 
 message DeleteRequest {
-    bytes key = 1;
+    string key = 1;
 }
 
 message DeleteResponse {
