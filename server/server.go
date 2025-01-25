@@ -1,46 +1,47 @@
-package kv
+package server
 
 import (
 	"context"
 	"fmt"
 	"sync"
 
+	"github.com/mateopresacastro/kv/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
 )
 
 type kvServer struct {
-	KVServer
+	api.KVServer
 	store map[string][]byte
 	mu    sync.RWMutex
 }
 
-func NewServer() *grpc.Server {
+func New() *grpc.Server {
 	s := grpc.NewServer()
 	srv := &kvServer{store: map[string][]byte{}}
-	RegisterKVServer(s, srv)
+	api.RegisterKVServer(s, srv)
 	return s
 }
 
-func (s *kvServer) Get(ctx context.Context, req *GetRequest) (*GetResponse, error) {
+func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetResponse, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	value, ok := s.store[req.Key]
 	if !ok {
 		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err()
 	}
-	return &GetResponse{Value: value}, nil
+	return &api.GetResponse{Value: value}, nil
 }
 
-func (s *kvServer) Set(ctx context.Context, req *SetRequest) (*SetResponse, error) {
+func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.store[req.Key] = req.Value
-	return &SetResponse{Ok: true}, nil
+	return &api.SetResponse{Ok: true}, nil
 }
 
-func (s *kvServer) Delete(ctx context.Context, req *DeleteRequest) (*DeleteResponse, error) {
+func (s *kvServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.DeleteResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, ok := s.store[req.Key]
@@ -48,10 +49,10 @@ func (s *kvServer) Delete(ctx context.Context, req *DeleteRequest) (*DeleteRespo
 		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err()
 	}
 	delete(s.store, req.Key)
-	return &DeleteResponse{Ok: true}, nil
+	return &api.DeleteResponse{Ok: true}, nil
 }
 
-func (s *kvServer) List(req *Empty, stream KV_ListServer) error {
+func (s *kvServer) List(req *api.Empty, stream grpc.ServerStreamingServer[api.GetResponse]) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -60,7 +61,7 @@ func (s *kvServer) List(req *Empty, stream KV_ListServer) error {
 		case <-stream.Context().Done():
 			return stream.Context().Err()
 		default:
-			if err := stream.Send(&GetResponse{Value: value}); err != nil {
+			if err := stream.Send(&api.GetResponse{Value: value}); err != nil {
 				return err
 			}
 		}

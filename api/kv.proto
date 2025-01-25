@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package kv;
+package api;
 
-option go_package = "github.com/mateopresacastro/kv";
+option go_package = "github.com/mateopresacastro/kv/api";
 
 message GetRequest {
     string key = 1;

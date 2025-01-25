@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v5.29.2
-// source: kv.proto
+// source: api/kv.proto
 
-package kv
+package api
 
 import (
 	context "context"
@@ -19,10 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	KV_Get_FullMethodName    = "/kv.KV/Get"
-	KV_Set_FullMethodName    = "/kv.KV/Set"
-	KV_Delete_FullMethodName = "/kv.KV/Delete"
-	KV_List_FullMethodName   = "/kv.KV/List"
+	KV_Get_FullMethodName    = "/api.KV/Get"
+	KV_Set_FullMethodName    = "/api.KV/Set"
+	KV_Delete_FullMethodName = "/api.KV/Delete"
+	KV_List_FullMethodName   = "/api.KV/List"
 )
 
 // KVClient is the client API for KV service.
@@ -212,7 +212,7 @@ type KV_ListServer = grpc.ServerStreamingServer[GetResponse]
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var KV_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "kv.KV",
+	ServiceName: "api.KV",
 	HandlerType: (*KVServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -235,5 +235,5 @@ var KV_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "kv.proto",
+	Metadata: "api/kv.proto",
 }

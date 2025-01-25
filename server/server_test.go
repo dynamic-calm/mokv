@@ -1,4 +1,4 @@
-package kv
+package server
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mateopresacastro/kv/api"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -23,7 +24,7 @@ func TestAPI(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 
-	server := NewServer()
+	server := New()
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -44,11 +45,11 @@ func TestAPI(t *testing.T) {
 	}
 	defer clientConn.Close()
 
-	client := NewKVClient(clientConn)
+	client := api.NewKVClient(clientConn)
 	ctx := context.Background()
 
 	expected := []byte("test_value")
-	setReq := &SetRequest{Key: "test_key", Value: expected}
+	setReq := &api.SetRequest{Key: "test_key", Value: expected}
 	setRes, err := client.Set(ctx, setReq)
 	if err != nil {
 		t.Fatalf("%s", err)
@@ -57,7 +58,7 @@ func TestAPI(t *testing.T) {
 		t.Fatalf("set res not ok")
 	}
 
-	getReq := &GetRequest{Key: "test_key"}
+	getReq := &api.GetRequest{Key: "test_key"}
 	getRes, err := client.Get(ctx, getReq)
 	if err != nil {
 		t.Fatalf("%s", err)
@@ -67,7 +68,7 @@ func TestAPI(t *testing.T) {
 		t.Fatalf("the values should be equal")
 	}
 
-	getRes, err = client.Get(ctx, &GetRequest{Key: "unknown"})
+	getRes, err = client.Get(ctx, &api.GetRequest{Key: "unknown"})
 	if err == nil {
 		t.Fatal("we should have an error when getting not existing key")
 	}
@@ -80,7 +81,7 @@ func TestStream(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 
-	server := NewServer()
+	server := New()
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -101,7 +102,7 @@ func TestStream(t *testing.T) {
 	}
 	defer clientConn.Close()
 
-	client := NewKVClient(clientConn)
+	client := api.NewKVClient(clientConn)
 	ctx := context.Background()
 
 	testData := map[string][]byte{
@@ -111,13 +112,13 @@ func TestStream(t *testing.T) {
 	}
 
 	for k, v := range testData {
-		_, err := client.Set(ctx, &SetRequest{Key: k, Value: v})
+		_, err := client.Set(ctx, &api.SetRequest{Key: k, Value: v})
 		if err != nil {
 			t.Fatalf("failed to set test data: %v", err)
 		}
 	}
 
-	stream, err := client.List(ctx, &Empty{})
+	stream, err := client.List(ctx, &api.Empty{})
 	if err != nil {
 		t.Fatalf("failed to start list stream: %v", err)
 	}
@@ -159,7 +160,7 @@ func TestListErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
-	server := NewServer()
+	server := New()
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -179,11 +180,11 @@ func TestListErrors(t *testing.T) {
 	}
 	defer clientConn.Close()
 
-	client := NewKVClient(clientConn)
+	client := api.NewKVClient(clientConn)
 
 	t.Run("context cancellation", func(t *testing.T) {
 		ctx := context.Background()
-		_, err := client.Set(ctx, &SetRequest{
+		_, err := client.Set(ctx, &api.SetRequest{
 			Key:   "test_key",
 			Value: []byte("test_value"),
 		})
@@ -194,7 +195,7 @@ func TestListErrors(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		stream, err := client.List(ctx, &Empty{})
+		stream, err := client.List(ctx, &api.Empty{})
 		if err != nil {
 			t.Fatalf("failed to start stream: %v", err)
 		}
@@ -210,7 +211,7 @@ func TestListErrors(t *testing.T) {
 	})
 
 	t.Run("server shutdown", func(t *testing.T) {
-		stream, err := client.List(context.Background(), &Empty{})
+		stream, err := client.List(context.Background(), &api.Empty{})
 		if err != nil {
 			t.Fatalf("failed to start stream: %v", err)
 		}
@@ -240,7 +241,7 @@ func TestConcurrency(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 
-	server := NewServer()
+	server := New()
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -261,7 +262,7 @@ func TestConcurrency(t *testing.T) {
 	}
 	defer clientConn.Close()
 
-	client := NewKVClient(clientConn)
+	client := api.NewKVClient(clientConn)
 	ctx := context.Background()
 
 	expected := []byte("test_value")
@@ -272,7 +273,7 @@ func TestConcurrency(t *testing.T) {
 	for i := 0; i < num; i++ {
 		go func(i int) {
 			defer wg.Done()
-			setReq := &SetRequest{Key: "test_key" + strconv.Itoa(i), Value: expected}
+			setReq := &api.SetRequest{Key: "test_key" + strconv.Itoa(i), Value: expected}
 			setRes, err := client.Set(ctx, setReq)
 			if err != nil {
 				t.Errorf("%s", err)
@@ -289,7 +290,7 @@ func TestConcurrency(t *testing.T) {
 	for i := 0; i < num; i++ {
 		go func(i int) {
 			defer wg.Done()
-			getReq := &GetRequest{Key: "test_key" + strconv.Itoa(i)}
+			getReq := &api.GetRequest{Key: "test_key" + strconv.Itoa(i)}
 			getRes, err := client.Get(ctx, getReq)
 			if err != nil {
 				t.Errorf("%s", err)

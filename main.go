@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/mateopresacastro/kv"
+	"github.com/mateopresacastro/kv/server"
 )
 
 func main() {
@@ -35,7 +35,7 @@ func run(ctx context.Context) error {
 	}
 	defer listener.Close()
 
-	server := kv.NewServer()
+	server := server.New()
 	errChan := make(chan error, 1)
 
 	go func() {
