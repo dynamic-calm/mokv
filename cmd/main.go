@@ -26,7 +26,7 @@ func run(ctx context.Context) error {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
-		slog.Warn("port empty, setting default", "default", port)
+		slog.Warn("PORT not set", "using", port)
 	}
 
 	listener, err := net.Listen("tcp", ":"+port)
@@ -35,7 +35,7 @@ func run(ctx context.Context) error {
 	}
 	defer listener.Close()
 
-	server := kv.NewKVServer()
+	server := kv.NewServer()
 	errChan := make(chan error, 1)
 
 	go func() {
