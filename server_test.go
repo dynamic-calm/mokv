@@ -5,6 +5,8 @@ import (
 	context "context"
 	"io"
 	"net"
+	"strconv"
+	sync "sync"
 	"testing"
 	"time"
 
@@ -229,4 +231,73 @@ func TestListErrors(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestConcurrency(t *testing.T) {
+	listener, err := net.Listen("tcp", ":0")
+	defer listener.Close()
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
+
+	server := NewServer()
+	ready := make(chan bool)
+	go func() {
+		defer close(ready)
+		ready <- true
+		if err := server.Serve(listener); err != nil {
+			t.Errorf("server error: %v", err)
+		}
+	}()
+	defer server.Stop()
+
+	<-ready
+
+	creds := insecure.NewCredentials()
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
+	clientConn, err := grpc.NewClient(listener.Addr().String(), opts...)
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
+	defer clientConn.Close()
+
+	client := NewKVClient(clientConn)
+	ctx := context.Background()
+
+	expected := []byte("test_value")
+	num := 100
+
+	var wg sync.WaitGroup
+	wg.Add(num)
+	for i := 0; i < num; i++ {
+		go func(i int) {
+			defer wg.Done()
+			setReq := &SetRequest{Key: "test_key" + strconv.Itoa(i), Value: expected}
+			setRes, err := client.Set(ctx, setReq)
+			if err != nil {
+				t.Errorf("%s", err)
+			}
+			if !setRes.Ok {
+				t.Errorf("set res not ok")
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	wg.Add(num)
+	for i := 0; i < num; i++ {
+		go func(i int) {
+			defer wg.Done()
+			getReq := &GetRequest{Key: "test_key" + strconv.Itoa(i)}
+			getRes, err := client.Get(ctx, getReq)
+			if err != nil {
+				t.Errorf("%s", err)
+			}
+			if string(getRes.Value) != string(expected) {
+				t.Errorf("the values should be equal")
+			}
+		}(i)
+	}
+	wg.Wait()
 }
