@@ -28,7 +28,7 @@ func (s *kvServer) Get(ctx context.Context, req *GetRequest) (*GetResponse, erro
 	defer s.mu.RUnlock()
 	value, ok := s.store[req.Key]
 	if !ok {
-		return nil, status.New(codes.NotFound, fmt.Sprintf("no value for key: %s", req.Key)).Err()
+		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err()
 	}
 	return &GetResponse{Value: value}, nil
 }
@@ -45,7 +45,7 @@ func (s *kvServer) Delete(ctx context.Context, req *DeleteRequest) (*DeleteRespo
 	defer s.mu.Unlock()
 	_, ok := s.store[req.Key]
 	if !ok {
-		return nil, status.New(codes.NotFound, fmt.Sprintf("no value for key: %s", req.Key)).Err()
+		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err()
 	}
 	delete(s.store, req.Key)
 	return &DeleteResponse{Ok: true}, nil
@@ -67,4 +67,8 @@ func (s *kvServer) List(req *Empty, stream KV_ListServer) error {
 	}
 
 	return nil
+}
+
+func (s *kvServer) notFoundMsg(key string) string {
+	return fmt.Sprintf("no value for key: %s", key)
 }
