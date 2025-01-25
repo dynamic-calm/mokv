@@ -10,7 +10,6 @@ message GetRequest {
 
 message GetResponse {
     bytes value = 1;
-    bool ok = 2;
 }
 
 message SetRequest {

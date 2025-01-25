@@ -2,10 +2,12 @@ package kv
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"sync"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 )
 
 type kvServer struct {
@@ -26,9 +28,9 @@ func (s *kvServer) Get(ctx context.Context, req *GetRequest) (*GetResponse, erro
 	defer s.mu.RUnlock()
 	value, ok := s.store[req.Key]
 	if !ok {
-		return nil, errors.New("not found")
+		return nil, status.New(codes.NotFound, fmt.Sprintf("no value for key: %s", req.Key)).Err()
 	}
-	return &GetResponse{Value: value, Ok: ok}, nil
+	return &GetResponse{Value: value}, nil
 }
 
 func (s *kvServer) Set(ctx context.Context, req *SetRequest) (*SetResponse, error) {
@@ -43,7 +45,7 @@ func (s *kvServer) Delete(ctx context.Context, req *DeleteRequest) (*DeleteRespo
 	defer s.mu.Unlock()
 	_, ok := s.store[req.Key]
 	if !ok {
-		return nil, errors.New("not found")
+		return nil, status.New(codes.NotFound, fmt.Sprintf("no value for key: %s", req.Key)).Err()
 	}
 	delete(s.store, req.Key)
 	return &DeleteResponse{Ok: true}, nil
