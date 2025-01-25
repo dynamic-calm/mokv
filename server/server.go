@@ -17,8 +17,8 @@ type kvServer struct {
 	mu    sync.RWMutex
 }
 
-func New() *grpc.Server {
-	s := grpc.NewServer()
+func New(so grpc.ServerOption) *grpc.Server {
+	s := grpc.NewServer(so)
 	srv := &kvServer{store: map[string][]byte{}}
 	api.RegisterKVServer(s, srv)
 	return s

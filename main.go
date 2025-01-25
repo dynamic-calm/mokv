@@ -5,10 +5,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 
 	"github.com/mateopresacastro/kv/server"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel/exporters/prometheus"
+	"go.opentelemetry.io/otel/sdk/metric"
+	"google.golang.org/grpc/stats/opentelemetry"
 )
 
 func main() {
@@ -35,12 +40,36 @@ func run(ctx context.Context) error {
 	}
 	defer listener.Close()
 
-	server := server.New()
+	exporter, err := prometheus.New()
+	if err != nil {
+		return fmt.Errorf("failed to start prometheus exporter: %w", err)
+	}
+	provider := metric.NewMeterProvider(metric.WithReader(exporter))
+	so := opentelemetry.ServerOption(
+		opentelemetry.Options{MetricsOptions: opentelemetry.MetricsOptions{MeterProvider: provider}},
+	)
+
+	server := server.New(so)
 	errChan := make(chan error, 1)
+
+	metricsPort := os.Getenv("METRICS_PORT")
+	if metricsPort == "" {
+		metricsPort = "4000"
+		slog.Warn("METRICS_PORT not set", "using", metricsPort)
+	}
 
 	go func() {
 		defer close(errChan)
-		slog.Info("listening...", "addr", listener.Addr())
+		go func() {
+			slog.Info("metrics listening...", "port", metricsPort)
+			if err := http.ListenAndServe(":"+metricsPort, promhttp.Handler()); err != nil {
+				slog.Error("metrics error", "err", err)
+				errChan <- err
+				cancel()
+			}
+		}()
+
+		slog.Info("server listening...", "addr", listener.Addr())
 		if err := server.Serve(listener); err != nil {
 			slog.Error("server error", "err", err)
 			errChan <- err

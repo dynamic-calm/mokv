@@ -24,7 +24,7 @@ func TestAPI(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 
-	server := New()
+	server := New(&grpc.EmptyServerOption{})
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -86,7 +86,7 @@ func TestStream(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 
-	server := New()
+	server := New(&grpc.EmptyServerOption{})
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -165,7 +165,7 @@ func TestListErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
-	server := New()
+	server := New(&grpc.EmptyServerOption{})
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -246,7 +246,7 @@ func TestConcurrency(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 
-	server := New()
+	server := New(&grpc.EmptyServerOption{})
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
