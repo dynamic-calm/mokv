@@ -7,3 +7,6 @@ compile:
 		--proto_path=.
 test:
 	go test
+
+start:
+	go run cmd/main.go

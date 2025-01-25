@@ -28,7 +28,7 @@ func (s *kvServer) Get(ctx context.Context, req *GetRequest) (*GetResponse, erro
 	if !ok {
 		return nil, errors.New("not found")
 	}
-	return &GetResponse{Value: value}, nil
+	return &GetResponse{Value: value, Ok: ok}, nil
 }
 
 func (s *kvServer) Set(ctx context.Context, req *SetRequest) (*SetResponse, error) {
