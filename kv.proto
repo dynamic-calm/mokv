@@ -1,4 +1,5 @@
 syntax = "proto3";
+
 package kv;
 
 option go_package = "github.com/mateopresacastro/kv";
@@ -29,7 +30,7 @@ message DeleteResponse {
     bool ok = 1;
 }
 
-service KeyValueStore {
+service KV {
     rpc Get(GetRequest) returns (GetResponse) {}
     rpc Set(SetRequest) returns (SetResponse) {}
     rpc Delete(DeleteRequest) returns (DeleteResponse) {}
