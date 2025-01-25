@@ -48,6 +48,11 @@ func TestAPI(t *testing.T) {
 	client := api.NewKVClient(clientConn)
 	ctx := context.Background()
 
+	hc, _ := client.HealthCheck(ctx, &api.Empty{})
+
+	if !hc.Ok {
+		t.Fatal("health check failed")
+	}
 	expected := []byte("test_value")
 	setReq := &api.SetRequest{Key: "test_key", Value: expected}
 	setRes, err := client.Set(ctx, setReq)

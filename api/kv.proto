@@ -29,11 +29,16 @@ message DeleteResponse {
     bool ok = 1;
 }
 
+message HealthCheckResponse {
+    bool ok = 1;
+}
+
 service KV {
     rpc Get(GetRequest) returns (GetResponse) {}
     rpc Set(SetRequest) returns (SetResponse) {}
     rpc Delete(DeleteRequest) returns (DeleteResponse) {}
     rpc List(Empty) returns (stream GetResponse) {}
+    rpc HealthCheck(Empty) returns(HealthCheckResponse){}
 }
 
 message Empty {}

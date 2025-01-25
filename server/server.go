@@ -70,6 +70,10 @@ func (s *kvServer) List(req *api.Empty, stream grpc.ServerStreamingServer[api.Ge
 	return nil
 }
 
+func (s *kvServer) HealthCheck(ctx context.Context, req *api.Empty) (*api.HealthCheckResponse, error) {
+	return &api.HealthCheckResponse{Ok: true}, nil
+}
+
 func (s *kvServer) notFoundMsg(key string) string {
 	return fmt.Sprintf("no value for key: %s", key)
 }

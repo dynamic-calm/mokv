@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	KV_Get_FullMethodName    = "/api.KV/Get"
-	KV_Set_FullMethodName    = "/api.KV/Set"
-	KV_Delete_FullMethodName = "/api.KV/Delete"
-	KV_List_FullMethodName   = "/api.KV/List"
+	KV_Get_FullMethodName         = "/api.KV/Get"
+	KV_Set_FullMethodName         = "/api.KV/Set"
+	KV_Delete_FullMethodName      = "/api.KV/Delete"
+	KV_List_FullMethodName        = "/api.KV/List"
+	KV_HealthCheck_FullMethodName = "/api.KV/HealthCheck"
 )
 
 // KVClient is the client API for KV service.
@@ -33,6 +34,7 @@ type KVClient interface {
 	Set(ctx context.Context, in *SetRequest, opts ...grpc.CallOption) (*SetResponse, error)
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
 	List(ctx context.Context, in *Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetResponse], error)
+	HealthCheck(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*HealthCheckResponse, error)
 }
 
 type kVClient struct {
@@ -92,6 +94,16 @@ func (c *kVClient) List(ctx context.Context, in *Empty, opts ...grpc.CallOption)
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type KV_ListClient = grpc.ServerStreamingClient[GetResponse]
 
+func (c *kVClient) HealthCheck(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*HealthCheckResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HealthCheckResponse)
+	err := c.cc.Invoke(ctx, KV_HealthCheck_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // KVServer is the server API for KV service.
 // All implementations must embed UnimplementedKVServer
 // for forward compatibility.
@@ -100,6 +112,7 @@ type KVServer interface {
 	Set(context.Context, *SetRequest) (*SetResponse, error)
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
 	List(*Empty, grpc.ServerStreamingServer[GetResponse]) error
+	HealthCheck(context.Context, *Empty) (*HealthCheckResponse, error)
 	mustEmbedUnimplementedKVServer()
 }
 
@@ -121,6 +134,9 @@ func (UnimplementedKVServer) Delete(context.Context, *DeleteRequest) (*DeleteRes
 }
 func (UnimplementedKVServer) List(*Empty, grpc.ServerStreamingServer[GetResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedKVServer) HealthCheck(context.Context, *Empty) (*HealthCheckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HealthCheck not implemented")
 }
 func (UnimplementedKVServer) mustEmbedUnimplementedKVServer() {}
 func (UnimplementedKVServer) testEmbeddedByValue()            {}
@@ -208,6 +224,24 @@ func _KV_List_Handler(srv interface{}, stream grpc.ServerStream) error {
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type KV_ListServer = grpc.ServerStreamingServer[GetResponse]
 
+func _KV_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KVServer).HealthCheck(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KV_HealthCheck_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVServer).HealthCheck(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // KV_ServiceDesc is the grpc.ServiceDesc for KV service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -226,6 +260,10 @@ var KV_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _KV_Delete_Handler,
+		},
+		{
+			MethodName: "HealthCheck",
+			Handler:    _KV_HealthCheck_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
