@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/mateopresacastro/kv/server"
 	"github.com/mateopresacastro/kv/store"
@@ -18,7 +19,7 @@ import (
 )
 
 func Run(ctx context.Context) error {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
 	port := os.Getenv("PORT")
@@ -51,15 +52,21 @@ func Run(ctx context.Context) error {
 		slog.Warn("METRICS_PORT not set", "using", metricsPort)
 	}
 
-	mErrChan := make(chan error, 1)
-
 	go func() {
-		defer close(mErrChan)
-		slog.Info("metrics listening...", "port", metricsPort)
-		if err := http.ListenAndServe(":"+metricsPort, promhttp.Handler()); err != nil {
-			slog.Error("metrics error", "err", err)
-			mErrChan <- err
-			cancel()
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			slog.Info("metrics listening...", "port", metricsPort)
+			if err := http.ListenAndServe(":"+metricsPort, promhttp.Handler()); err != nil && err != http.ErrServerClosed {
+				slog.Error("metrics server failed", "err", err) // If the metrics server fails restart it after 5 seconds
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					continue
+				}
+			}
+			return
 		}
 	}()
 
@@ -84,8 +91,6 @@ func Run(ctx context.Context) error {
 
 	select {
 	case err := <-srvErrChan:
-		return err
-	case err := <-mErrChan:
 		return err
 	default:
 		return nil
