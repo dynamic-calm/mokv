@@ -15,7 +15,6 @@ type Authorizer struct {
 func New(model, policy string) *Authorizer {
 	enforcer, err := casbin.NewEnforcer(model, policy)
 	if err != nil {
-		fmt.Printf("Debug: Failed to create enforcer: %v\n", err)
 		panic(err)
 	}
 
