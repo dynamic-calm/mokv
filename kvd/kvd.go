@@ -1,4 +1,4 @@
-package main
+package kvd
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc/stats/opentelemetry"
 )
 
-func run(ctx context.Context) error {
+func Run(ctx context.Context) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
