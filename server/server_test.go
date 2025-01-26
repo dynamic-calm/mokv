@@ -449,6 +449,7 @@ func TestAuthorization(t *testing.T) {
 
 	<-ready
 
+	// No permissions to client
 	nobodyTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.NobodyClientCertFile,
 		KeyFile:       config.NobodyClientKeyFile,
@@ -461,7 +462,6 @@ func TestAuthorization(t *testing.T) {
 
 	nobodyCreds := credentials.NewTLS(nobodyTLSConfig)
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(nobodyCreds)}
-
 	clientConn, err := grpc.NewClient(listener.Addr().String(), opts...)
 	if err != nil {
 		t.Fatalf("%s", err)
