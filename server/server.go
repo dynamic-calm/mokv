@@ -119,7 +119,16 @@ func authenticate(ctx context.Context) (context.Context, error) {
 	if peer.AuthInfo == nil {
 		return context.WithValue(ctx, subjectContextKey{}, ""), nil
 	}
-	tlsInfo := peer.AuthInfo.(credentials.TLSInfo)
+
+	tlsInfo, ok := peer.AuthInfo.(credentials.TLSInfo)
+	if !ok {
+		return ctx, status.New(codes.Unauthenticated, "invalid auth info type").Err()
+	}
+
+	if len(tlsInfo.State.VerifiedChains) == 0 || len(tlsInfo.State.VerifiedChains[0]) == 0 {
+		return ctx, status.New(codes.Unauthenticated, "no valid certificate found").Err()
+	}
+
 	subject := tlsInfo.State.VerifiedChains[0][0].Subject.CommonName
 	ctx = context.WithValue(ctx, subjectContextKey{}, subject)
 	return ctx, nil

@@ -17,6 +17,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/stats/opentelemetry"
 )
 
@@ -29,38 +31,53 @@ func Run(ctx context.Context) error {
 		port = "3000"
 		slog.Warn("PORT not set", "using", port)
 	}
-
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 	defer listener.Close()
 
+	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CertFile:      config.ServerCertFile,
+		KeyFile:       config.ServerKeyFile,
+		CAFile:        config.CAFile,
+		ServerAddress: listener.Addr().String(),
+		Server:        true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to setup TLS: %w", err)
+	}
+
 	exporter, err := prometheus.New()
 	if err != nil {
 		return fmt.Errorf("failed to start prometheus exporter: %w", err)
 	}
-
 	provider := metric.NewMeterProvider(metric.WithReader(exporter))
 	defer provider.Shutdown(ctx)
 
-	otelSo := opentelemetry.ServerOption(
-		opentelemetry.Options{MetricsOptions: opentelemetry.MetricsOptions{MeterProvider: provider}},
-	)
+	serverOpts := []grpc.ServerOption{
+		grpc.Creds(credentials.NewTLS(serverTLSConfig)),
+		opentelemetry.ServerOption(
+			opentelemetry.Options{
+				MetricsOptions: opentelemetry.MetricsOptions{
+					MeterProvider: provider,
+				},
+			},
+		),
+	}
 
 	metricsPort := os.Getenv("METRICS_PORT")
 	if metricsPort == "" {
 		metricsPort = "4000"
 		slog.Warn("METRICS_PORT not set", "using", metricsPort)
 	}
-
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
 			slog.Info("metrics server listening...", "port", metricsPort)
 			if err := http.ListenAndServe(":"+metricsPort, promhttp.Handler()); err != nil && err != http.ErrServerClosed {
-				slog.Error("metrics server failed", "err", err) // If the metrics server fails restart it after 5 seconds
+				slog.Error("metrics server failed", "err", err)
 				select {
 				case <-ctx.Done():
 					return
@@ -74,9 +91,9 @@ func Run(ctx context.Context) error {
 
 	store := store.New()
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := server.New(store, authorizer, otelSo)
-	srvErrChan := make(chan error, 1)
+	server := server.New(store, authorizer, serverOpts...)
 
+	srvErrChan := make(chan error, 1)
 	go func() {
 		defer close(srvErrChan)
 		slog.Info("grpc server listening...", "addr", listener.Addr())
