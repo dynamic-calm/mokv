@@ -10,8 +10,8 @@ compile:
 		--proto_path=.
 
 .PHONY: test
-test:
-	go test ./...
+test: $(CONFIG_PATH)/model.conf $(CONFIG_PATH)/policy.csv
+	go test -cover ./...
 
 .PHONY: start
 start:
@@ -24,20 +24,34 @@ init:
 .PHONY: gencert
 gencert:
 	cfssl gencert \
-		-initca cfssl/ca-csr.json | cfssljson -bare ca
+		-initca config/auth/ca-csr.json | cfssljson -bare ca
 
 	cfssl gencert \
 		-ca=ca.pem \
 		-ca-key=ca-key.pem \
-		-config=cfssl/ca-config.json \
+		-config=config/auth/ca-config.json \
 		-profile=server \
-		cfssl/server-csr.json | cfssljson -bare server
+		config/auth/server-csr.json | cfssljson -bare server
 
 	cfssl gencert \
 		-ca=ca.pem \
 		-ca-key=ca-key.pem \
-		-config=cfssl/ca-config.json \
+		-config=config/auth/ca-config.json \
 		-profile=client \
-		cfssl/client-csr.json | cfssljson -bare client
+		-cn="root" \
+		config/auth/client-csr.json | cfssljson -bare root-client
+
+	cfssl gencert \
+		-ca=ca.pem \
+		-ca-key=ca-key.pem \
+		-config=config/auth/ca-config.json \
+		-profile=client \
+		-cn="nobody" \
+		config/auth/client-csr.json | cfssljson -bare nobody-client
 
 	mv *.pem *.csr ${CONFIG_PATH}
+
+$(CONFIG_PATH)/model.conf:
+		cp config/auth/model.conf $(CONFIG_PATH)/model.conf
+$(CONFIG_PATH)/policy.csv:
+		cp config/auth/policy.csv $(CONFIG_PATH)/policy.csv

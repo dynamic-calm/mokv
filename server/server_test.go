@@ -58,8 +58,8 @@ func TestAPI(t *testing.T) {
 	<-ready
 
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.ClientCertFile,
-		KeyFile:       config.ClientKeyFile,
+		CertFile:      config.RootClientCertFile,
+		KeyFile:       config.RootClientKeyFile,
 		CAFile:        config.CAFile,
 		ServerAddress: "localhost",
 	})
@@ -147,8 +147,8 @@ func TestStream(t *testing.T) {
 	<-ready
 
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.ClientCertFile,
-		KeyFile:       config.ClientKeyFile,
+		CertFile:      config.RootClientCertFile,
+		KeyFile:       config.RootClientKeyFile,
 		CAFile:        config.CAFile,
 		ServerAddress: "localhost",
 	})
@@ -258,8 +258,8 @@ func TestListErrors(t *testing.T) {
 	<-ready
 
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.ClientCertFile,
-		KeyFile:       config.ClientKeyFile,
+		CertFile:      config.RootClientCertFile,
+		KeyFile:       config.RootClientKeyFile,
 		CAFile:        config.CAFile,
 		ServerAddress: "localhost",
 	})
@@ -364,8 +364,8 @@ func TestConcurrency(t *testing.T) {
 	<-ready
 
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.ClientCertFile,
-		KeyFile:       config.ClientKeyFile,
+		CertFile:      config.RootClientCertFile,
+		KeyFile:       config.RootClientKeyFile,
 		CAFile:        config.CAFile,
 		ServerAddress: "localhost",
 	})
