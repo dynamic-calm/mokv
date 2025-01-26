@@ -28,12 +28,12 @@ type Membership struct {
 }
 
 func New(h Handler, cfg Config) (*Membership, error) {
-	c := &Membership{handler: h, Config: cfg}
-	if err := c.setupSerf(); err != nil {
+	m := &Membership{handler: h, Config: cfg}
+	if err := m.setupSerf(); err != nil {
 		return nil, err
 	}
 
-	return c, nil
+	return m, nil
 }
 
 func (m *Membership) setupSerf() error {
