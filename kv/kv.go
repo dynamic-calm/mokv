@@ -1,4 +1,4 @@
-package kvd
+package kv
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/mateopresacastro/kv/server"
-	"github.com/mateopresacastro/kv/store"
+	"github.com/mateopresacastro/mokv/server"
+	"github.com/mateopresacastro/mokv/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
@@ -56,7 +56,7 @@ func Run(ctx context.Context) error {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
-			slog.Info("metrics listening...", "port", metricsPort)
+			slog.Info("metrics server listening...", "port", metricsPort)
 			if err := http.ListenAndServe(":"+metricsPort, promhttp.Handler()); err != nil && err != http.ErrServerClosed {
 				slog.Error("metrics server failed", "err", err) // If the metrics server fails restart it after 5 seconds
 				select {
@@ -76,7 +76,7 @@ func Run(ctx context.Context) error {
 
 	go func() {
 		defer close(srvErrChan)
-		slog.Info("server listening...", "addr", listener.Addr())
+		slog.Info("grpc server listening...", "addr", listener.Addr())
 		if err := server.Serve(listener); err != nil {
 			slog.Error("server error", "err", err)
 			srvErrChan <- err

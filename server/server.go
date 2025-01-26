@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/mateopresacastro/kv/api"
-	"github.com/mateopresacastro/kv/store"
+	"github.com/mateopresacastro/mokv/api"
+	"github.com/mateopresacastro/mokv/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"

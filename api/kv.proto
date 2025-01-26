@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package api;
 
-option go_package = "github.com/mateopresacastro/kv/api";
+option go_package = "github.com/mateopresacastro/mokv/api";
 
 message GetRequest {
     string key = 1;

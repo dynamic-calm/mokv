@@ -1,4 +1,4 @@
-module github.com/mateopresacastro/kv
+module github.com/mateopresacastro/mokv
 
 go 1.23.4
 

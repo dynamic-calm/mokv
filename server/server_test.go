@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mateopresacastro/kv/api"
-	"github.com/mateopresacastro/kv/store"
+	"github.com/mateopresacastro/mokv/api"
+	"github.com/mateopresacastro/mokv/store"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
