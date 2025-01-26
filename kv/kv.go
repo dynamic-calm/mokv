@@ -42,7 +42,7 @@ func Run(ctx context.Context) error {
 	provider := metric.NewMeterProvider(metric.WithReader(exporter))
 	defer provider.Shutdown(ctx)
 
-	so := opentelemetry.ServerOption(
+	otelSo := opentelemetry.ServerOption(
 		opentelemetry.Options{MetricsOptions: opentelemetry.MetricsOptions{MeterProvider: provider}},
 	)
 
@@ -71,7 +71,7 @@ func Run(ctx context.Context) error {
 	}()
 
 	store := store.New()
-	server := server.New(so, store)
+	server := server.New(store, otelSo)
 	srvErrChan := make(chan error, 1)
 
 	go func() {

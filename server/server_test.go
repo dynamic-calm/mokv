@@ -2,31 +2,49 @@ package server
 
 import (
 	"bytes"
-	context "context"
+	"context"
 	"io"
 	"net"
+	"os"
 	"strconv"
-	sync "sync"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/mateopresacastro/mokv/api"
+	"github.com/mateopresacastro/mokv/config"
 	"github.com/mateopresacastro/mokv/store"
 	grpc "google.golang.org/grpc"
-	codes "google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	status "google.golang.org/grpc/status"
 )
 
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
 func TestAPI(t *testing.T) {
 	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
 	defer listener.Close()
+
+	store := store.New()
+	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CertFile:      config.ServerCertFile,
+		KeyFile:       config.ServerKeyFile,
+		CAFile:        config.CAFile,
+		ServerAddress: listener.Addr().String(),
+		Server:        true,
+	})
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
 
-	store := store.New()
-	server := New(&grpc.EmptyServerOption{}, store)
+	serverCreds := credentials.NewTLS(serverTLSConfig)
+	server := New(store, grpc.Creds(serverCreds))
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -39,8 +57,19 @@ func TestAPI(t *testing.T) {
 
 	<-ready
 
-	creds := insecure.NewCredentials()
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
+	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CertFile:      config.ClientCertFile,
+		KeyFile:       config.ClientKeyFile,
+		CAFile:        config.CAFile,
+		ServerAddress: "localhost",
+	})
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
+
+	clientCreds := credentials.NewTLS(clientTLSConfig)
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds)}
+
 	clientConn, err := grpc.NewClient(listener.Addr().String(), opts...)
 	if err != nil {
 		t.Fatalf("%s", err)
@@ -49,8 +78,10 @@ func TestAPI(t *testing.T) {
 
 	client := api.NewKVClient(clientConn)
 	ctx := context.Background()
-
-	hc, _ := client.HealthCheck(ctx, &api.Empty{})
+	hc, err := client.HealthCheck(ctx, &api.Empty{})
+	if err != nil {
+		t.Fatalf("Health check error: %v", err)
+	}
 	if !hc.Ok {
 		t.Fatal("health check failed")
 	}
@@ -81,15 +112,28 @@ func TestAPI(t *testing.T) {
 	}
 
 }
+
 func TestStream(t *testing.T) {
 	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
 	defer listener.Close()
+
+	store := store.New()
+	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CertFile:      config.ServerCertFile,
+		KeyFile:       config.ServerKeyFile,
+		CAFile:        config.CAFile,
+		ServerAddress: listener.Addr().String(),
+		Server:        true,
+	})
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
 
-	store := store.New()
-	server := New(&grpc.EmptyServerOption{}, store)
+	serverCreds := credentials.NewTLS(serverTLSConfig)
+	server := New(store, grpc.Creds(serverCreds))
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -102,8 +146,19 @@ func TestStream(t *testing.T) {
 
 	<-ready
 
-	creds := insecure.NewCredentials()
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
+	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CertFile:      config.ClientCertFile,
+		KeyFile:       config.ClientKeyFile,
+		CAFile:        config.CAFile,
+		ServerAddress: "localhost",
+	})
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
+
+	clientCreds := credentials.NewTLS(clientTLSConfig)
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds)}
+
 	clientConn, err := grpc.NewClient(listener.Addr().String(), opts...)
 	if err != nil {
 		t.Fatalf("%s", err)
@@ -112,6 +167,13 @@ func TestStream(t *testing.T) {
 
 	client := api.NewKVClient(clientConn)
 	ctx := context.Background()
+	hc, err := client.HealthCheck(ctx, &api.Empty{})
+	if err != nil {
+		t.Fatalf("Health check error: %v", err)
+	}
+	if !hc.Ok {
+		t.Fatal("health check failed")
+	}
 
 	testData := map[string][]byte{
 		"key1": []byte("value1"),
@@ -164,12 +226,25 @@ func TestStream(t *testing.T) {
 
 func TestListErrors(t *testing.T) {
 	listener, err := net.Listen("tcp", ":0")
-	defer listener.Close()
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
+	defer listener.Close()
+
 	store := store.New()
-	server := New(&grpc.EmptyServerOption{}, store)
+	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CertFile:      config.ServerCertFile,
+		KeyFile:       config.ServerKeyFile,
+		CAFile:        config.CAFile,
+		ServerAddress: listener.Addr().String(),
+		Server:        true,
+	})
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
+
+	serverCreds := credentials.NewTLS(serverTLSConfig)
+	server := New(store, grpc.Creds(serverCreds))
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -179,10 +254,22 @@ func TestListErrors(t *testing.T) {
 		}
 	}()
 	defer server.Stop()
+
 	<-ready
 
-	creds := insecure.NewCredentials()
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
+	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CertFile:      config.ClientCertFile,
+		KeyFile:       config.ClientKeyFile,
+		CAFile:        config.CAFile,
+		ServerAddress: "localhost",
+	})
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
+
+	clientCreds := credentials.NewTLS(clientTLSConfig)
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds)}
+
 	clientConn, err := grpc.NewClient(listener.Addr().String(), opts...)
 	if err != nil {
 		t.Fatalf("%s", err)
@@ -245,13 +332,25 @@ func TestListErrors(t *testing.T) {
 
 func TestConcurrency(t *testing.T) {
 	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
 	defer listener.Close()
+
+	store := store.New()
+	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CertFile:      config.ServerCertFile,
+		KeyFile:       config.ServerKeyFile,
+		CAFile:        config.CAFile,
+		ServerAddress: listener.Addr().String(),
+		Server:        true,
+	})
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
 
-	store := store.New()
-	server := New(&grpc.EmptyServerOption{}, store)
+	serverCreds := credentials.NewTLS(serverTLSConfig)
+	server := New(store, grpc.Creds(serverCreds))
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -264,8 +363,19 @@ func TestConcurrency(t *testing.T) {
 
 	<-ready
 
-	creds := insecure.NewCredentials()
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
+	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CertFile:      config.ClientCertFile,
+		KeyFile:       config.ClientKeyFile,
+		CAFile:        config.CAFile,
+		ServerAddress: "localhost",
+	})
+	if err != nil {
+		t.Fatalf("%s", err)
+	}
+
+	clientCreds := credentials.NewTLS(clientTLSConfig)
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds)}
+
 	clientConn, err := grpc.NewClient(listener.Addr().String(), opts...)
 	if err != nil {
 		t.Fatalf("%s", err)

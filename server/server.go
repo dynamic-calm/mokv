@@ -16,8 +16,8 @@ type kvServer struct {
 	store store.Store
 }
 
-func New(so grpc.ServerOption, store store.Store) *grpc.Server {
-	s := grpc.NewServer(so)
+func New(store store.Store, opts ...grpc.ServerOption) *grpc.Server {
+	s := grpc.NewServer(opts...)
 	srv := &kvServer{store: store}
 	api.RegisterKVServer(s, srv)
 	return s
