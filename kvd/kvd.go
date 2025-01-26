@@ -37,6 +37,7 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to start prometheus exporter: %w", err)
 	}
+
 	provider := metric.NewMeterProvider(metric.WithReader(exporter))
 	defer provider.Shutdown(ctx)
 
@@ -51,6 +52,7 @@ func Run(ctx context.Context) error {
 	}
 
 	mErrChan := make(chan error, 1)
+
 	go func() {
 		defer close(mErrChan)
 		slog.Info("metrics listening...", "port", metricsPort)
@@ -64,9 +66,9 @@ func Run(ctx context.Context) error {
 	store := store.New()
 	server := server.New(so, store)
 	srvErrChan := make(chan error, 1)
+
 	go func() {
 		defer close(srvErrChan)
-
 		slog.Info("server listening...", "addr", listener.Addr())
 		if err := server.Serve(listener); err != nil {
 			slog.Error("server error", "err", err)
