@@ -10,6 +10,7 @@ import (
 	"os/signal"
 
 	"github.com/mateopresacastro/kv/server"
+	"github.com/mateopresacastro/kv/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
@@ -60,7 +61,8 @@ func run(ctx context.Context) error {
 		}
 	}()
 
-	server := server.New(so)
+	store := store.New()
+	server := server.New(so, store)
 	srvErrChan := make(chan error, 1)
 	go func() {
 		defer close(srvErrChan)

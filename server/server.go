@@ -3,9 +3,9 @@ package server
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/mateopresacastro/kv/api"
+	"github.com/mateopresacastro/kv/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -13,50 +13,42 @@ import (
 
 type kvServer struct {
 	api.KVServer
-	store map[string][]byte
-	mu    sync.RWMutex
+	store store.Store
 }
 
-func New(so grpc.ServerOption) *grpc.Server {
+func New(so grpc.ServerOption, store store.Store) *grpc.Server {
 	s := grpc.NewServer(so)
-	srv := &kvServer{store: map[string][]byte{}}
+	srv := &kvServer{store: store}
 	api.RegisterKVServer(s, srv)
 	return s
 }
 
 func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetResponse, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	value, ok := s.store[req.Key]
-	if !ok {
-		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err()
+	value, err := s.store.Get(req.Key)
+	if err != nil {
+		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err() // TODO improve error handling. Do boundary layers.
 	}
 	return &api.GetResponse{Value: value}, nil
 }
 
 func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.store[req.Key] = req.Value
+	err := s.store.Set(req.Key, req.Value)
+	if err != nil {
+		return &api.SetResponse{Ok: false}, status.New(codes.Internal, "something went wrong storing data").Err()
+	}
 	return &api.SetResponse{Ok: true}, nil
 }
 
 func (s *kvServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.DeleteResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, ok := s.store[req.Key]
-	if !ok {
+	err := s.store.Delete(req.Key)
+	if err != nil {
 		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err()
 	}
-	delete(s.store, req.Key)
 	return &api.DeleteResponse{Ok: true}, nil
 }
 
 func (s *kvServer) List(req *api.Empty, stream grpc.ServerStreamingServer[api.GetResponse]) error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	for _, value := range s.store {
+	for value := range s.store.List() {
 		select {
 		case <-stream.Context().Done():
 			return stream.Context().Err()

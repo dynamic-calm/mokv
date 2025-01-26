@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mateopresacastro/kv/api"
+	"github.com/mateopresacastro/kv/store"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -24,7 +25,8 @@ func TestAPI(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 
-	server := New(&grpc.EmptyServerOption{})
+	store := store.New()
+	server := New(&grpc.EmptyServerOption{}, store)
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -86,7 +88,8 @@ func TestStream(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 
-	server := New(&grpc.EmptyServerOption{})
+	store := store.New()
+	server := New(&grpc.EmptyServerOption{}, store)
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -165,7 +168,8 @@ func TestListErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
-	server := New(&grpc.EmptyServerOption{})
+	store := store.New()
+	server := New(&grpc.EmptyServerOption{}, store)
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -246,7 +250,8 @@ func TestConcurrency(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 
-	server := New(&grpc.EmptyServerOption{})
+	store := store.New()
+	server := New(&grpc.EmptyServerOption{}, store)
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
