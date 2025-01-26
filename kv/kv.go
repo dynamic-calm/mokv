@@ -10,6 +10,8 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/mateopresacastro/mokv/auth"
+	"github.com/mateopresacastro/mokv/config"
 	"github.com/mateopresacastro/mokv/server"
 	"github.com/mateopresacastro/mokv/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -71,7 +73,8 @@ func Run(ctx context.Context) error {
 	}()
 
 	store := store.New()
-	server := server.New(store, otelSo)
+	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
+	server := server.New(store, authorizer, otelSo)
 	srvErrChan := make(chan error, 1)
 
 	go func() {
