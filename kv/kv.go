@@ -177,6 +177,7 @@ func setupMemership() (func(), error) {
 		LocalServer: client,
 	}
 
+	// TODO: think about naming
 	nodePort := "8401"
 	hostname, _ := os.Hostname()
 	nodeName := fmt.Sprintf("%s-%s", hostname, port)
