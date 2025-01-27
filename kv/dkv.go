@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -32,28 +33,27 @@ type Config struct {
 		StreamLayer
 		Bootstrap bool
 	}
-	dataDir string
+	DataDir string
 }
 
 type DistributedKV struct {
-	cfg  Config
+	cfg  *Config
 	kv   KV
 	raft *raft.Raft
 }
 
-func NewDistributedKV(store store.Store, cfg Config) (KV, error) {
+func NewDistributedKV(store store.Store, cfg *Config) (KV, error) {
 	kv := New(store)
 	dkv := &DistributedKV{cfg: cfg, kv: kv}
-	if err := dkv.setupRaft(dkv.cfg.dataDir); err != nil {
+	if err := dkv.setupRaft(dkv.cfg.DataDir); err != nil {
 		return nil, err
 	}
 	return dkv, nil
 }
 
 func (dkv *DistributedKV) Set(key string, value []byte) error {
-	var rt RequestType
 	// Replicate Set
-	_, err := dkv.apply(rt, &api.SetRequest{Key: key, Value: value})
+	_, err := dkv.apply(SetRequestType, &api.SetRequest{Key: key, Value: value})
 	if err != nil {
 		return err
 	}
@@ -61,9 +61,8 @@ func (dkv *DistributedKV) Set(key string, value []byte) error {
 }
 
 func (dkv *DistributedKV) Delete(key string) error {
-	var rt RequestType
 	// Replicate Delete
-	_, err := dkv.apply(rt, &api.DeleteRequest{Key: key})
+	_, err := dkv.apply(DeleteRequestType, &api.DeleteRequest{Key: key})
 	if err != nil {
 		return err
 	}
@@ -78,14 +77,82 @@ func (dkv *DistributedKV) List() <-chan []byte {
 	return dkv.kv.List()
 }
 
-func (dkv *DistributedKV) setupRaft(dataDir string) error {
-	fsm := &fsm{kv: dkv.kv}
+func (dkv *DistributedKV) Join(id, addr string) error {
+	serverID := raft.ServerID(id)
+	serverAddr := raft.ServerAddress(addr)
 
-	logStore, err := raftboltdb.NewBoltStore(filepath.Join(dataDir, "raft", "log"))
+	configFuture := dkv.raft.GetConfiguration()
+	if err := configFuture.Error(); err != nil {
+		return err
+	}
+
+	for _, srv := range configFuture.Configuration().Servers {
+		if srv.ID == serverID && srv.Address == serverAddr {
+			// Server has already joined
+			return nil
+		}
+		if srv.ID == serverID || srv.Address == serverAddr {
+			// Remove the existing server
+			removeFuture := dkv.raft.RemoveServer(serverID, 0, 0)
+			if err := removeFuture.Error(); err != nil {
+				return err
+			}
+		}
+	}
+	addFuture := dkv.raft.AddVoter(serverID, serverAddr, 0, 0)
+	if err := addFuture.Error(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (dkv *DistributedKV) Leave(id string) error {
+	removeFuture := dkv.raft.RemoveServer(raft.ServerID(id), 0, 0)
+	return removeFuture.Error()
+}
+
+func (dkv *DistributedKV) Close() error {
+	f := dkv.raft.Shutdown()
+	if err := f.Error(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (dkv *DistributedKV) WaitForLeader(timeout time.Duration) error {
+	timeoutc := time.After(timeout)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timeoutc:
+			return errors.New("timed out")
+		case <-ticker.C:
+			if l := dkv.raft.Leader(); l != "" {
+				return nil
+			}
+		}
+	}
+
+}
+
+func (dkv *DistributedKV) setupRaft(dataDir string) error {
+	kv, ok := dkv.kv.(*kv)
+	if !ok {
+		return fmt.Errorf("invalid KV implementation: expected *kv, got %T", dkv.kv)
+	}
+
+	fsm := &fsm{kv: kv}
+
+	raftDir := filepath.Join(dataDir, "raft")
+	if err := os.MkdirAll(raftDir, 0755); err != nil {
+		return fmt.Errorf("failed to create raft directory: %w", err)
+	}
+	logStore, err := raftboltdb.NewBoltStore(filepath.Join(raftDir, "log"))
 	if err != nil {
 		return err
 	}
-	stableStore, err := raftboltdb.NewBoltStore(filepath.Join(dataDir, "raft", "stable"))
+	stableStore, err := raftboltdb.NewBoltStore(filepath.Join(raftDir, "stable"))
 	if err != nil {
 		return err
 	}
@@ -194,11 +261,12 @@ func (dkv *DistributedKV) apply(reqType RequestType, req proto.Message) (any, er
 var _ raft.FSM = (*fsm)(nil)
 
 type fsm struct {
-	kv KV
+	kv *kv
 }
 
-func (fsm *fsm) Apply(record *raft.Log) any {
-	buf := record.Data
+// This will get called on every node in the cluster
+func (fsm *fsm) Apply(log *raft.Log) any {
+	buf := log.Data
 	// Get the reqType from the first byte of the buffer
 	reqType := RequestType(buf[0])
 	switch reqType {

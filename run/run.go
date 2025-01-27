@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"time"
 
+	"github.com/hashicorp/raft"
 	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/auth"
 	"github.com/mateopresacastro/mokv/config"
@@ -22,18 +24,17 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/stats/opentelemetry"
 )
 
 func Run(ctx context.Context) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
-	provider, err := setupMetricsServer(ctx)
-	if err != nil {
-		return err
-	}
-	errChan, err := setupGRPCServer(ctx, provider)
+	// provider, err := setupMetricsServer(ctx)
+	// if err != nil {
+	// 	return err
+	// }
+	errChan, err := setupGRPCServer(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -117,17 +118,48 @@ func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (chan 
 
 	serverOpts := []grpc.ServerOption{
 		grpc.Creds(credentials.NewTLS(serverTLSConfig)),
-		opentelemetry.ServerOption(
-			opentelemetry.Options{
-				MetricsOptions: opentelemetry.MetricsOptions{
-					MeterProvider: provider,
-				},
-			},
-		),
+		// opentelemetry.ServerOption(
+		// 	opentelemetry.Options{
+		// 		MetricsOptions: opentelemetry.MetricsOptions{
+		// 			MeterProvider: provider,
+		// 		},
+		// 	},
+		// ),
 	}
 
 	store := store.New()
-	kv := kv.New(store)
+	cfg := &kv.Config{
+		DataDir: "data",
+	}
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get hostname: %w", err)
+	}
+	isFirstNode := port == "3000"
+	cfg.Raft.LocalID = raft.ServerID(fmt.Sprintf("%s-%s", hostname, port))
+	cfg.Raft.Bootstrap = isFirstNode
+	raftLn, err := net.Listen("tcp", ":0")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create raft listener: %w", err)
+	}
+
+	peerTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CertFile:      config.RootClientCertFile,
+		KeyFile:       config.RootClientKeyFile,
+		CAFile:        config.CAFile,
+		ServerAddress: "localhost",
+	})
+
+	cfg.Raft.StreamLayer = *kv.NewStreamLayer(
+		raftLn,
+		serverTLSConfig,
+		peerTLSConfig,
+	)
+
+	kv, err := kv.NewDistributedKV(store, cfg)
+	if err != nil {
+		return nil, err
+	}
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	server := server.New(kv, authorizer, serverOpts...)
 
@@ -174,10 +206,18 @@ func setupMemership() (func(), error) {
 		LocalServer: client,
 	}
 
-	// TODO: think about naming
-	nodePort := "8401"
+	nodePort := fmt.Sprintf("%d", 8400+func() int {
+		p, _ := strconv.Atoi(port)
+		return p - 3000 + 1
+	}())
+
 	hostname, _ := os.Hostname()
 	nodeName := fmt.Sprintf("%s-%s", hostname, port)
+
+	var startJoinAddrs []string
+	if port != "3000" {
+		startJoinAddrs = []string{"127.0.0.1:8401"}
+	}
 
 	membership, err := discovery.New(replicator, discovery.Config{
 		NodeName: nodeName,
@@ -185,7 +225,7 @@ func setupMemership() (func(), error) {
 		Tags: map[string]string{
 			"rpc_addr": ":" + port,
 		},
-		StartJoinAddrs: []string{fmt.Sprintf("127.0.0.1:%s", nodePort)},
+		StartJoinAddrs: startJoinAddrs,
 	})
 
 	shutdown := func() {
