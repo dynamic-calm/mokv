@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mateopresacastro/mokv/kv"
+	"github.com/mateopresacastro/mokv/run"
 )
 
 func main() {
 	ctx := context.Background()
-	if err := kv.Run(ctx); err != nil {
+	if err := run.Run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}

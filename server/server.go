@@ -7,7 +7,7 @@ import (
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/mateopresacastro/mokv/api"
-	"github.com/mateopresacastro/mokv/store"
+	"github.com/mateopresacastro/mokv/kv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -17,7 +17,7 @@ import (
 
 type kvServer struct {
 	api.KVServer
-	store      store.Store
+	KV         kv.KV
 	authorizer Authorizer
 }
 
@@ -31,7 +31,7 @@ type Authorizer interface {
 	Authorize(subject, object, action string) error
 }
 
-func New(store store.Store, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
+func New(KV kv.KV, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
 	// Middleware for streaming and unary requests
 	opts = append(opts, grpc.StreamInterceptor(
 		grpc_middleware.ChainStreamServer(
@@ -42,7 +42,7 @@ func New(store store.Store, authorizer Authorizer, opts ...grpc.ServerOption) *g
 	)))
 
 	s := grpc.NewServer(opts...)
-	srv := &kvServer{store: store, authorizer: authorizer}
+	srv := &kvServer{KV: KV, authorizer: authorizer}
 	api.RegisterKVServer(s, srv)
 	return s
 }
@@ -52,7 +52,7 @@ func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetRespon
 	if err != nil {
 		return nil, err
 	}
-	value, err := s.store.Get(req.Key)
+	value, err := s.KV.Get(req.Key)
 	if err != nil {
 		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err() // TODO improve error handling. Do boundary layers.
 	}
@@ -64,7 +64,7 @@ func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetRespon
 	if err != nil {
 		return nil, err
 	}
-	err = s.store.Set(req.Key, req.Value)
+	err = s.KV.Set(req.Key, req.Value)
 	if err != nil {
 		return &api.SetResponse{Ok: false}, status.New(codes.Internal, "something went wrong storing data").Err()
 	}
@@ -76,7 +76,7 @@ func (s *kvServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.Del
 	if err != nil {
 		return nil, err
 	}
-	err = s.store.Delete(req.Key)
+	err = s.KV.Delete(req.Key)
 	if err != nil {
 		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err()
 	}
@@ -87,7 +87,7 @@ func (s *kvServer) List(req *api.Empty, stream grpc.ServerStreamingServer[api.Ge
 	if err := s.authorizer.Authorize(subject(stream.Context()), objectWildcard, consumeAction); err != nil {
 		return err
 	}
-	for value := range s.store.List() {
+	for value := range s.KV.List() {
 		select {
 		case <-stream.Context().Done():
 			return stream.Context().Err()

@@ -14,7 +14,7 @@ import (
 	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/auth"
 	"github.com/mateopresacastro/mokv/config"
-	"github.com/mateopresacastro/mokv/store"
+	"github.com/mateopresacastro/mokv/kv/store"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
