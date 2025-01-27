@@ -1,4 +1,4 @@
-package kv_test
+package run_test
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 
 	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/config"
-	"github.com/mateopresacastro/mokv/kv"
+	"github.com/mateopresacastro/mokv/run"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -33,7 +33,7 @@ func TestRunE2E(t *testing.T) {
 	errChan := make(chan error, 1)
 	go func() {
 		defer close(errChan)
-		errChan <- kv.Run(ctx)
+		errChan <- run.Run(ctx)
 	}()
 
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
