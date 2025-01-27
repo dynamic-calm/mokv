@@ -44,11 +44,12 @@ func (m *Membership) setupSerf() error {
 	config := serf.DefaultConfig()
 	config.Init()
 
+	// Memberlist config
 	mlConfig := memberlist.DefaultLocalConfig()
 	mlConfig.BindAddr = addr.IP.String()
 	mlConfig.BindPort = addr.Port
-
 	config.MemberlistConfig = mlConfig
+
 	m.events = make(chan serf.Event)
 	config.EventCh = m.events
 	config.Tags = m.Tags

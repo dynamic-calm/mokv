@@ -33,6 +33,16 @@ func (r *Replicator) Join(name, addr string) error {
 }
 
 func (r *Replicator) replicate(addr string, leave chan struct{}) {
+	// Get stream to list all elements on this node
+	ctx := context.Background()
+	stream, err := r.LocalServer.List(ctx, &api.Empty{})
+	if err != nil {
+		slog.Error("failed to get", "err", err)
+		return
+	}
+	responsesChan := make(chan *api.GetResponse)
+
+	// Create client for node that just connected
 	cc, err := grpc.NewClient(addr, r.DialOptions...)
 	if err != nil {
 		slog.Error("failed to dial", "err", err)
@@ -41,25 +51,16 @@ func (r *Replicator) replicate(addr string, leave chan struct{}) {
 	defer cc.Close()
 
 	client := api.NewKVClient(cc)
-	ctx := context.Background()
-
-	stream, err := client.List(ctx, &api.Empty{})
-	if err != nil {
-		slog.Error("failed to get", "err", err)
-		return
-	}
-	responses := make(chan *api.GetResponse)
 
 	go func() {
-		defer close(responses)
+		defer close(responsesChan)
 		for {
 			recv, err := stream.Recv()
 			if err != nil {
 				slog.Error("failed to receive", "err", err)
 				return
 			}
-
-			responses <- recv
+			responsesChan <- recv
 		}
 	}()
 
@@ -69,10 +70,12 @@ func (r *Replicator) replicate(addr string, leave chan struct{}) {
 			return
 		case <-leave:
 			return
-		case response := <-responses:
-			_, err = r.LocalServer.Set(ctx, &api.SetRequest{Key: response.Key, Value: response.Value})
+		case response := <-responsesChan:
+			// Replicate all objects to new node
+			_, err = client.Set(ctx, &api.SetRequest{Key: response.Key, Value: response.Value})
 			if err != nil {
 				slog.Error("failed to set", "err", err)
+				// TODO: better error handling? should we continue here?
 				return
 			}
 		}
