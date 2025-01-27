@@ -41,6 +41,12 @@ func Run(ctx context.Context) error {
 		return err
 	}
 
+	shutdown, err := setupMemership()
+	if err != nil {
+		return err
+	}
+	defer shutdown()
+
 	<-ctx.Done()
 
 	select {
@@ -147,7 +153,7 @@ func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (chan 
 	return srvErrChan, nil
 }
 
-func setupMemership() (*discovery.Membership, error) {
+func setupMemership() (func(), error) {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
@@ -170,14 +176,30 @@ func setupMemership() (*discovery.Membership, error) {
 		DialOptions: []grpc.DialOption{opts},
 		LocalServer: client,
 	}
+
+	nodePort := "8401"
+	hostname, _ := os.Hostname()
+	nodeName := fmt.Sprintf("%s-%s", hostname, port)
+
 	membership, err := discovery.New(replicator, discovery.Config{
-		NodeName: "test",
-		BindAddr: "test",
+		NodeName: nodeName,
+		BindAddr: fmt.Sprintf("127.0.0.1:%s", nodePort),
 		Tags: map[string]string{
 			"rpc_addr": ":" + port,
 		},
-		StartJoinAddrs: []string{"test"},
+		StartJoinAddrs: []string{fmt.Sprintf("127.0.0.1:%s", nodePort)},
 	})
 
-	return membership, nil
+	shutdown := func() {
+		err = membership.Leave()
+		if err != nil {
+			fmt.Println(err)
+		}
+		err = replicator.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+
+	return shutdown, nil
 }
