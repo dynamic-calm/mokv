@@ -31,15 +31,10 @@ func TestRunE2E(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errChan := make(chan error, 1)
-	ready := make(chan bool)
 	go func() {
 		defer close(errChan)
-		defer close(ready)
-		ready <- true
 		errChan <- kv.Run(ctx)
 	}()
-
-	<-ready
 
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.RootClientCertFile,

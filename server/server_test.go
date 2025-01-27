@@ -130,17 +130,12 @@ func TestStream(t *testing.T) {
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	server := New(store, authorizer, grpc.Creds(serverCreds))
-	ready := make(chan bool)
 	go func() {
-		defer close(ready)
-		ready <- true
 		if err := server.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
 		}
 	}()
 	defer server.Stop()
-
-	<-ready
 
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.RootClientCertFile,
@@ -235,17 +230,12 @@ func TestListErrors(t *testing.T) {
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	server := New(store, authorizer, grpc.Creds(serverCreds))
-	ready := make(chan bool)
 	go func() {
-		defer close(ready)
-		ready <- true
 		if err := server.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
 		}
 	}()
 	defer server.Stop()
-
-	<-ready
 
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.RootClientCertFile,
@@ -342,17 +332,12 @@ func TestConcurrency(t *testing.T) {
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	server := New(store, authorizer, grpc.Creds(serverCreds))
-	ready := make(chan bool)
 	go func() {
-		defer close(ready)
-		ready <- true
 		if err := server.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
 		}
 	}()
 	defer server.Stop()
-
-	<-ready
 
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.RootClientCertFile,
@@ -437,17 +422,12 @@ func TestAuthorization(t *testing.T) {
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	server := New(store, authorizer, grpc.Creds(serverCreds))
 
-	ready := make(chan bool)
 	go func() {
-		defer close(ready)
-		ready <- true
 		if err := server.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
 		}
 	}()
 	defer server.Stop()
-
-	<-ready
 
 	// No permissions to client
 	nobodyTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
