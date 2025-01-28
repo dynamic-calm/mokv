@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -41,6 +42,7 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	kv, errChan, err := setupGRPCServer(ctx, provider)
 	if err != nil {
 		return err
@@ -99,6 +101,7 @@ func setupMetricsServer(ctx context.Context) (*metric.MeterProvider, error) {
 
 func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (kv.KV, chan error, error) {
 	_, cancel := context.WithCancel(ctx)
+
 	defer cancel()
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -106,7 +109,7 @@ func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (kv.KV
 		slog.Warn("PORT not set", "using", port)
 	}
 
-	listener, err := net.Listen("tcp", ":"+port)
+	listener, err := net.Listen("tcp", "127.0.0.1:"+port)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to listen: %w", err)
 	}
@@ -137,16 +140,24 @@ func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (kv.KV
 	}
 
 	store := store.New()
-	cfg := &kv.Config{
-		DataDir: "data",
-	}
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get hostname: %w", err)
 	}
-	isFirstNode := port == "3000"
+	parsedPort, err := strconv.Atoi(port)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse port: %w", err)
+	}
+	raftPort := strconv.Itoa(parsedPort + 1000)
+	dataDir := filepath.Join("data", fmt.Sprintf("node-%s", port))
+
+	cfg := &kv.Config{
+		DataDir: dataDir,
+	}
+	cfg.Raft.BindAddr = fmt.Sprintf("127.0.0.1:%s", raftPort)
+	cfg.Raft.RPCPort = port
 	cfg.Raft.LocalID = raft.ServerID(fmt.Sprintf("%s-%s", hostname, port))
-	cfg.Raft.Bootstrap = isFirstNode
+	cfg.Raft.Bootstrap = port == "3000"
 
 	// Create a Raft listener for incoming connections that
 	// have RaftRPC as first byte. This way we can multiplex
@@ -223,7 +234,7 @@ func setupMemership(dkv kv.KV) (func(), error) {
 
 	nodePort := fmt.Sprintf("%d", 8400+func() int {
 		p, _ := strconv.Atoi(port)
-		return p - 3000 + 1
+		return p - 3000
 	}())
 
 	hostname, _ := os.Hostname()
@@ -231,8 +242,9 @@ func setupMemership(dkv kv.KV) (func(), error) {
 
 	var startJoinAddrs []string
 	if port != "3000" {
-		startJoinAddrs = []string{"127.0.0.1:8401"}
+		startJoinAddrs = []string{"127.0.0.1:8400"}
 	}
+
 	distributedKV, ok := dkv.(*kv.DistributedKV)
 	if !ok {
 		return nil, fmt.Errorf("failed to convert kv to *kv.DistributedKV")
@@ -242,15 +254,20 @@ func setupMemership(dkv kv.KV) (func(), error) {
 		NodeName: nodeName,
 		BindAddr: fmt.Sprintf("127.0.0.1:%s", nodePort),
 		Tags: map[string]string{
-			"rpc_addr": ":" + port,
+			"rpc_addr": fmt.Sprintf("127.0.0.1:%s", port),
 		},
 		StartJoinAddrs: startJoinAddrs,
 	})
 
+	if err != nil {
+		return nil, fmt.Errorf("failed to create membership: %w", err)
+	}
+
 	shutdown := func() {
-		err = membership.Leave()
-		if err != nil {
-			fmt.Println(err)
+		if membership != nil {
+			if err := membership.Leave(); err != nil {
+				slog.Error("failed to leave", "error", err)
+			}
 		}
 	}
 

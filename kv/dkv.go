@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -39,6 +40,8 @@ type Config struct {
 		raft.Config
 		StreamLayer
 		Bootstrap bool
+		BindAddr  string
+		RPCPort   string
 	}
 	DataDir string
 }
@@ -53,6 +56,7 @@ func NewDistributedKV(store store.Store, cfg *Config) (KV, error) {
 	kv := New(store)
 	dkv := &DistributedKV{cfg: cfg, kv: kv}
 	if err := dkv.setupRaft(dkv.cfg.DataDir); err != nil {
+		slog.Error("failed setting up raft", "err", err)
 		return nil, err
 	}
 	return dkv, nil
@@ -85,31 +89,44 @@ func (dkv *DistributedKV) List() <-chan []byte {
 }
 
 func (dkv *DistributedKV) Join(id, addr string) error {
+	slog.Info("attempting to join", "id", id, "addr", addr)
+
 	serverID := raft.ServerID(id)
 	serverAddr := raft.ServerAddress(addr)
 
+	isLeader := dkv.raft.State() == raft.Leader
+	slog.Info("join request received", "am_i_leader", isLeader)
+
+	if !isLeader {
+		slog.Info("not leader, forwarding join request", "leader_addr", dkv.raft.Leader())
+		return fmt.Errorf("not the leader, cannot process join")
+	}
+
+	slog.Info("checking configuration")
 	configFuture := dkv.raft.GetConfiguration()
 	if err := configFuture.Error(); err != nil {
-		return err
+		return fmt.Errorf("failed to get raft configuration: %w", err)
 	}
 
 	for _, srv := range configFuture.Configuration().Servers {
+		slog.Info("existing server", "id", srv.ID, "addr", srv.Address)
 		if srv.ID == serverID && srv.Address == serverAddr {
-			// Server has already joined
+			slog.Info("server already joined", "id", id)
 			return nil
 		}
-		if srv.ID == serverID || srv.Address == serverAddr {
-			// Remove the existing server
-			removeFuture := dkv.raft.RemoveServer(serverID, 0, 0)
-			if err := removeFuture.Error(); err != nil {
-				return err
-			}
-		}
 	}
+
+	slog.Info("adding voter to cluster", "id", id, "addr", addr)
 	addFuture := dkv.raft.AddVoter(serverID, serverAddr, 0, 0)
 	if err := addFuture.Error(); err != nil {
-		return err
+		return fmt.Errorf("failed to add voter: %w", err)
 	}
+
+	if err := dkv.WaitForLeader(10 * time.Second); err != nil {
+		return fmt.Errorf("failed waiting for leader after join: %w", err)
+	}
+
+	slog.Info("successfully added voter", "id", id)
 	return nil
 }
 
@@ -157,6 +174,7 @@ func (dkv *DistributedKV) setupRaft(dataDir string) error {
 	}
 	logStore, err := raftboltdb.NewBoltStore(filepath.Join(raftDir, "log"))
 	if err != nil {
+		slog.Error("failed to create logStore", "err", err)
 		return err
 	}
 	stableStore, err := raftboltdb.NewBoltStore(filepath.Join(raftDir, "stable"))
@@ -180,8 +198,22 @@ func (dkv *DistributedKV) setupRaft(dataDir string) error {
 		timeout,
 		os.Stderr,
 	)
+
 	config := raft.DefaultConfig()
 	config.LocalID = dkv.cfg.Raft.LocalID
+
+	// Add these configurations
+	config.TrailingLogs = 10                  // Keep more logs
+	config.SnapshotInterval = 5 * time.Minute // Take snapshots less frequently
+	config.SnapshotThreshold = 1024           // Keep more logs before snapshot
+
+	// Lower timeouts for development
+	config.HeartbeatTimeout = 1000 * time.Millisecond
+	config.ElectionTimeout = 1000 * time.Millisecond
+	config.CommitTimeout = 100 * time.Millisecond
+
+	// Use smaller batches for replication
+	config.MaxAppendEntries = 32
 
 	// To override in tests
 	if dkv.cfg.Raft.HeartbeatTimeout != 0 {
@@ -219,6 +251,10 @@ func (dkv *DistributedKV) setupRaft(dataDir string) error {
 	}
 
 	if dkv.cfg.Raft.Bootstrap && !hasState {
+		slog.Info("bootstrapping first node",
+			"id", config.LocalID,
+			"addr", transport.LocalAddr())
+
 		config := raft.Configuration{
 			Servers: []raft.Server{
 				{
@@ -228,6 +264,10 @@ func (dkv *DistributedKV) setupRaft(dataDir string) error {
 			},
 		}
 		err = dkv.raft.BootstrapCluster(config).Error()
+		if err != nil {
+			return fmt.Errorf("failed to bootstrap: %w", err)
+		}
+		slog.Info("bootstrap successful")
 	}
 
 	return err
