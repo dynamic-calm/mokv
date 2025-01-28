@@ -19,6 +19,13 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type KV interface {
+	Get(key string) ([]byte, error)
+	Set(key string, value []byte) error
+	Delete(key string) error
+	List() <-chan []byte
+}
+
 type RequestType uint8
 
 const (
@@ -382,6 +389,7 @@ func (s *StreamLayer) Dial(
 	if err != nil {
 		return nil, err
 	}
+	// Identify to mux this is a raft RPC
 	_, err = conn.Write([]byte{byte(RaftRPC)})
 	if err != nil {
 		return nil, err
@@ -414,6 +422,7 @@ func (s *StreamLayer) Accept() (net.Conn, error) {
 func (s *StreamLayer) Close() error {
 	return s.ln.Close()
 }
+
 func (s *StreamLayer) Addr() net.Addr {
 	return s.ln.Addr()
 }

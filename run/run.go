@@ -1,8 +1,10 @@
 package run
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -12,7 +14,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/auth"
 	"github.com/mateopresacastro/mokv/config"
 	"github.com/mateopresacastro/mokv/discovery"
@@ -20,25 +21,31 @@ import (
 	"github.com/mateopresacastro/mokv/kv/store"
 	"github.com/mateopresacastro/mokv/server"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/stats/opentelemetry"
 )
+
+type Agent struct {
+	kv *kv.DistributedKV
+}
 
 func Run(ctx context.Context) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
-	// provider, err := setupMetricsServer(ctx)
-	// if err != nil {
-	// 	return err
-	// }
-	errChan, err := setupGRPCServer(ctx, nil)
+	provider, err := setupMetricsServer(ctx)
 	if err != nil {
 		return err
 	}
-	shutdown, err := setupMemership()
+	kv, errChan, err := setupGRPCServer(ctx, provider)
+	if err != nil {
+		return err
+	}
+	shutdown, err := setupMemership(kv)
 	if err != nil {
 		return err
 	}
@@ -90,7 +97,7 @@ func setupMetricsServer(ctx context.Context) (*metric.MeterProvider, error) {
 	return provider, nil
 }
 
-func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (chan error, error) {
+func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (kv.KV, chan error, error) {
 	_, cancel := context.WithCancel(ctx)
 	defer cancel()
 	port := os.Getenv("PORT")
@@ -101,8 +108,10 @@ func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (chan 
 
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
-		return nil, fmt.Errorf("failed to listen: %w", err)
+		return nil, nil, fmt.Errorf("failed to listen: %w", err)
 	}
+
+	mux := cmux.New(listener)
 
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.ServerCertFile,
@@ -113,18 +122,18 @@ func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (chan 
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to setup TLS: %w", err)
+		return nil, nil, fmt.Errorf("failed to setup TLS: %w", err)
 	}
 
 	serverOpts := []grpc.ServerOption{
 		grpc.Creds(credentials.NewTLS(serverTLSConfig)),
-		// opentelemetry.ServerOption(
-		// 	opentelemetry.Options{
-		// 		MetricsOptions: opentelemetry.MetricsOptions{
-		// 			MeterProvider: provider,
-		// 		},
-		// 	},
-		// ),
+		opentelemetry.ServerOption(
+			opentelemetry.Options{
+				MetricsOptions: opentelemetry.MetricsOptions{
+					MeterProvider: provider,
+				},
+			},
+		),
 	}
 
 	store := store.New()
@@ -133,15 +142,22 @@ func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (chan 
 	}
 	hostname, err := os.Hostname()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get hostname: %w", err)
+		return nil, nil, fmt.Errorf("failed to get hostname: %w", err)
 	}
 	isFirstNode := port == "3000"
 	cfg.Raft.LocalID = raft.ServerID(fmt.Sprintf("%s-%s", hostname, port))
 	cfg.Raft.Bootstrap = isFirstNode
-	raftLn, err := net.Listen("tcp", ":0")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create raft listener: %w", err)
-	}
+
+	// Create a Raft listener for incoming connections that
+	// have RaftRPC as first byte. This way we can multiplex
+	// on the same port regular connections and raft ones.
+	raftLn := mux.Match(func(reader io.Reader) bool {
+		b := make([]byte, 1)
+		if _, err := reader.Read(b); err != nil {
+			return false
+		}
+		return bytes.Compare(b, []byte{byte(kv.RaftRPC)}) == 0
+	})
 
 	peerTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.RootClientCertFile,
@@ -158,52 +174,51 @@ func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (chan 
 
 	kv, err := kv.NewDistributedKV(store, cfg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	server := server.New(kv, authorizer, serverOpts...)
-
+	grpcLn := mux.Match(cmux.Any())
 	srvErrChan := make(chan error, 1)
+	go func() {
+		defer func() {
+			close(srvErrChan)
+			server.GracefulStop()
+			listener.Close()
+			grpcLn.Close()
+			mux.Close()
+		}()
+		slog.Info("multiplexer listening...")
+		if err := mux.Serve(); err != nil {
+			slog.Error("mux error", "err", err)
+			srvErrChan <- err
+			cancel()
+		}
+	}()
 
 	go func() {
 		defer func() {
 			close(srvErrChan)
 			server.GracefulStop()
 			listener.Close()
+			grpcLn.Close()
+			mux.Close()
 		}()
-		slog.Info("grpc server listening...", "addr", listener.Addr())
-		if err := server.Serve(listener); err != nil {
+		slog.Info("gRPC server listening...", "addr", listener.Addr())
+		if err := server.Serve(grpcLn); err != nil {
 			slog.Error("server error", "err", err)
 			srvErrChan <- err
 			cancel()
 		}
 	}()
 
-	return srvErrChan, nil
+	return kv, srvErrChan, nil
 }
 
-func setupMemership() (func(), error) {
+func setupMemership(dkv kv.KV) (func(), error) {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
-	}
-	peerTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.RootClientCertFile,
-		KeyFile:       config.RootClientKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: "localhost",
-	})
-	creds := credentials.NewTLS(peerTLSConfig)
-	opts := grpc.WithTransportCredentials(creds)
-	cc, err := grpc.NewClient(":"+port, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	client := api.NewKVClient(cc)
-	replicator := &kv.Replicator{
-		DialOptions: []grpc.DialOption{opts},
-		LocalServer: client,
 	}
 
 	nodePort := fmt.Sprintf("%d", 8400+func() int {
@@ -218,8 +233,12 @@ func setupMemership() (func(), error) {
 	if port != "3000" {
 		startJoinAddrs = []string{"127.0.0.1:8401"}
 	}
+	distributedKV, ok := dkv.(*kv.DistributedKV)
+	if !ok {
+		return nil, fmt.Errorf("failed to convert kv to *kv.DistributedKV")
+	}
 
-	membership, err := discovery.New(replicator, discovery.Config{
+	membership, err := discovery.New(distributedKV, discovery.Config{
 		NodeName: nodeName,
 		BindAddr: fmt.Sprintf("127.0.0.1:%s", nodePort),
 		Tags: map[string]string{
@@ -230,10 +249,6 @@ func setupMemership() (func(), error) {
 
 	shutdown := func() {
 		err = membership.Leave()
-		if err != nil {
-			fmt.Println(err)
-		}
-		err = replicator.Close()
 		if err != nil {
 			fmt.Println(err)
 		}
