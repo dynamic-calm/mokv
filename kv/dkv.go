@@ -66,8 +66,12 @@ func (dkv *DistributedKV) Set(key string, value []byte) error {
 	if err := dkv.WaitForLeader(3 * time.Second); err != nil {
 		return fmt.Errorf("failed waiting for leader after join: %w", err)
 	}
+	err := dkv.kv.Set(key, value)
+	if err != nil {
+		return fmt.Errorf("failed to set key: %s, val: %s from kv: %w", key, string(value), err)
+	}
 	// Replicate Set
-	_, err := dkv.apply(SetRequestType, &api.SetRequest{Key: key, Value: value})
+	_, err = dkv.apply(SetRequestType, &api.SetRequest{Key: key, Value: value})
 	if err != nil {
 		return fmt.Errorf("failed to apply raft set: %w", err)
 	}
@@ -75,10 +79,14 @@ func (dkv *DistributedKV) Set(key string, value []byte) error {
 }
 
 func (dkv *DistributedKV) Delete(key string) error {
-	// Replicate Delete
-	_, err := dkv.apply(DeleteRequestType, &api.DeleteRequest{Key: key})
+	err := dkv.kv.Delete(key)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to delete key: %s from kv: %w", key, err)
+	}
+	// Replicate Delete
+	_, err = dkv.apply(DeleteRequestType, &api.DeleteRequest{Key: key})
+	if err != nil {
+		return fmt.Errorf("failed to apply replication deleting key: %s from kv: %w", key, err)
 	}
 	return nil
 }
