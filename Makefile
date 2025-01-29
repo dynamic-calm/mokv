@@ -55,3 +55,5 @@ $(CONFIG_PATH)/model.conf:
 		cp config/auth/model.conf $(CONFIG_PATH)/model.conf
 $(CONFIG_PATH)/policy.csv:
 		cp config/auth/policy.csv $(CONFIG_PATH)/policy.csv
+
+cicd: compile gencert test
