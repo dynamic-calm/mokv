@@ -34,6 +34,8 @@ func TestRunE2E(t *testing.T) {
 		errChan <- run.Run(ctx, getenv)
 	}()
 
+	time.Sleep(3 * time.Second)
+
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.RootClientCertFile,
 		KeyFile:       config.RootClientKeyFile,
