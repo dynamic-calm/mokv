@@ -98,20 +98,10 @@ func (m *Membership) eventHandler() {
 }
 
 func (m *Membership) handleJoin(member serf.Member) {
-	// Skip if this is our own join event
-	if m.isLocal(member) {
-		slog.Info("skipping self join event", "member", member.Name)
-		return
-	}
-
 	// Skip if we're not running on port 3000 (not the bootstrap node)
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
-	}
-	if port != "3000" {
-		slog.Info("skipping join handling, not bootstrap node", "member", member.Name)
-		return
 	}
 
 	slog.Info("handling join event",
@@ -122,9 +112,9 @@ func (m *Membership) handleJoin(member serf.Member) {
 	err := m.handler.Join(member.Name, member.Tags["rpc_addr"])
 	if err != nil {
 		slog.Error("failed to join", "error", err, "member", member)
-	} else {
-		slog.Info("successfully handled join", "member", member.Name)
+		return
 	}
+	slog.Info("successfully handled join", "member", member.Name)
 }
 
 func (m *Membership) handleLeave(member serf.Member) {

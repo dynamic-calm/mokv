@@ -33,21 +33,23 @@ import (
 type Agent struct {
 	kv *kv.DistributedKV
 }
+type GetEnv func(string) string
 
-func Run(ctx context.Context) error {
+func Run(ctx context.Context, getenv GetEnv) error {
+
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
-	provider, err := setupMetricsServer(ctx)
+	provider, err := setupMetricsServer(ctx, getenv)
 	if err != nil {
 		return err
 	}
 
-	kv, errChan, err := setupGRPCServer(ctx, provider)
+	kv, errChan, err := setupGRPCServer(ctx, getenv, provider)
 	if err != nil {
 		return err
 	}
-	shutdown, err := setupMemership(kv)
+	shutdown, err := setupMemership(kv, getenv)
 	if err != nil {
 		return err
 	}
@@ -63,13 +65,13 @@ func Run(ctx context.Context) error {
 	}
 }
 
-func setupMetricsServer(ctx context.Context) (*metric.MeterProvider, error) {
+func setupMetricsServer(ctx context.Context, getenv GetEnv) (*metric.MeterProvider, error) {
 	exporter, err := prometheus.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start prometheus exporter: %w", err)
 	}
 
-	metricsPort := os.Getenv("METRICS_PORT")
+	metricsPort := getenv("METRICS_PORT")
 	if metricsPort == "" {
 		metricsPort = "4000"
 		slog.Warn("METRICS_PORT not set", "using", metricsPort)
@@ -99,11 +101,11 @@ func setupMetricsServer(ctx context.Context) (*metric.MeterProvider, error) {
 	return provider, nil
 }
 
-func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (kv.KV, chan error, error) {
+func setupGRPCServer(ctx context.Context, getenv GetEnv, provider *metric.MeterProvider) (kv.KV, chan error, error) {
 	_, cancel := context.WithCancel(ctx)
 
 	defer cancel()
-	port := os.Getenv("PORT")
+	port := getenv("PORT")
 	if port == "" {
 		port = "3000"
 		slog.Warn("PORT not set", "using", port)
@@ -150,6 +152,11 @@ func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (kv.KV
 	}
 	raftPort := strconv.Itoa(parsedPort + 1000)
 	dataDir := filepath.Join("data", fmt.Sprintf("node-%s", port))
+	absDataDir, err := filepath.Abs(dataDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get absolute path: %v", err)
+	}
+	dataDir = absDataDir
 
 	cfg := &kv.Config{
 		DataDir: dataDir,
@@ -198,6 +205,18 @@ func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (kv.KV
 			server.GracefulStop()
 			listener.Close()
 			grpcLn.Close()
+		}()
+		slog.Info("gRPC server listening...", "addr", listener.Addr())
+		if err := server.Serve(grpcLn); err != nil {
+			slog.Error("server error", "err", err)
+			srvErrChan <- err
+			cancel()
+		}
+	}()
+
+	go func() {
+		defer func() {
+			close(srvErrChan)
 			mux.Close()
 		}()
 		slog.Info("multiplexer listening...")
@@ -208,27 +227,11 @@ func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (kv.KV
 		}
 	}()
 
-	go func() {
-		defer func() {
-			close(srvErrChan)
-			server.GracefulStop()
-			listener.Close()
-			grpcLn.Close()
-			mux.Close()
-		}()
-		slog.Info("gRPC server listening...", "addr", listener.Addr())
-		if err := server.Serve(grpcLn); err != nil {
-			slog.Error("server error", "err", err)
-			srvErrChan <- err
-			cancel()
-		}
-	}()
-
 	return dkv, srvErrChan, nil
 }
 
-func setupMemership(dkv kv.KV) (func(), error) {
-	port := os.Getenv("PORT")
+func setupMemership(dkv kv.KV, getenv GetEnv) (func(), error) {
+	port := getenv("PORT")
 	if port == "" {
 		port = "3000"
 	}

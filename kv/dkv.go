@@ -63,10 +63,13 @@ func NewDistributedKV(store store.Store, cfg *Config) (KV, error) {
 }
 
 func (dkv *DistributedKV) Set(key string, value []byte) error {
+	if err := dkv.WaitForLeader(3 * time.Second); err != nil {
+		return fmt.Errorf("failed waiting for leader after join: %w", err)
+	}
 	// Replicate Set
 	_, err := dkv.apply(SetRequestType, &api.SetRequest{Key: key, Value: value})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to apply raft set: %w", err)
 	}
 	return nil
 }
@@ -122,7 +125,7 @@ func (dkv *DistributedKV) Join(id, addr string) error {
 		return fmt.Errorf("failed to add voter: %w", err)
 	}
 
-	if err := dkv.WaitForLeader(10 * time.Second); err != nil {
+	if err := dkv.WaitForLeader(3 * time.Second); err != nil {
 		return fmt.Errorf("failed waiting for leader after join: %w", err)
 	}
 
@@ -157,7 +160,6 @@ func (dkv *DistributedKV) WaitForLeader(timeout time.Duration) error {
 			}
 		}
 	}
-
 }
 
 func (dkv *DistributedKV) setupRaft(dataDir string) error {
@@ -174,8 +176,7 @@ func (dkv *DistributedKV) setupRaft(dataDir string) error {
 	}
 	logStore, err := raftboltdb.NewBoltStore(filepath.Join(raftDir, "log"))
 	if err != nil {
-		slog.Error("failed to create logStore", "err", err)
-		return err
+		return fmt.Errorf("failed to create log store: %w", err)
 	}
 	stableStore, err := raftboltdb.NewBoltStore(filepath.Join(raftDir, "stable"))
 	if err != nil {
@@ -188,7 +189,7 @@ func (dkv *DistributedKV) setupRaft(dataDir string) error {
 		os.Stderr,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create snapshot store: %w", err)
 	}
 	maxPool := 5
 	timeout := 10 * time.Second
@@ -225,7 +226,7 @@ func (dkv *DistributedKV) setupRaft(dataDir string) error {
 		transport,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create new raft: %w", err)
 	}
 
 	hasState, err := raft.HasExistingState(
@@ -234,7 +235,7 @@ func (dkv *DistributedKV) setupRaft(dataDir string) error {
 		snapshotStore,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to if raft has exisiting state: %w", err)
 	}
 
 	if dkv.cfg.Raft.Bootstrap && !hasState {
@@ -257,7 +258,7 @@ func (dkv *DistributedKV) setupRaft(dataDir string) error {
 		slog.Info("bootstrap successful")
 	}
 
-	return err
+	return nil
 }
 
 func (dkv *DistributedKV) apply(reqType RequestType, req proto.Message) (any, error) {
