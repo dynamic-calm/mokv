@@ -4,10 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net"
 	"net/http"
-	"os"
-	"strconv"
 	"testing"
 	"time"
 
@@ -19,21 +16,22 @@ import (
 )
 
 func TestRunE2E(t *testing.T) {
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatalf("failed to create listener: %s", err)
+	getenv := func(key string) string {
+		switch key {
+		case "PORT":
+			return "3000"
+		case "METRICS_PORT":
+			return "4000"
+		default:
+			return ""
+		}
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
-
-	os.Setenv("PORT", strconv.Itoa(port))
-	os.Setenv("METRICS_PORT", "4000")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errChan := make(chan error, 1)
 	go func() {
 		defer close(errChan)
-		errChan <- run.Run(ctx)
+		errChan <- run.Run(ctx, getenv)
 	}()
 
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
@@ -48,7 +46,7 @@ func TestRunE2E(t *testing.T) {
 
 	clientCreds := credentials.NewTLS(clientTLSConfig)
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("localhost:%d", port),
+		fmt.Sprintf("localhost:%d", 3000),
 		grpc.WithTransportCredentials(clientCreds),
 	)
 	if err != nil {

@@ -2,12 +2,6 @@ package kv
 
 import "github.com/mateopresacastro/mokv/kv/store"
 
-type KV interface {
-	Get(key string) ([]byte, error)
-	Set(key string, value []byte) error
-	Delete(key string) error
-	List() <-chan []byte
-}
 
 type kv struct {
 	store store.Store

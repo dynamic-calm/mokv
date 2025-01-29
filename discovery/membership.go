@@ -3,6 +3,7 @@ package discovery
 import (
 	"log/slog"
 	"net"
+	"os"
 
 	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/serf/serf"
@@ -97,10 +98,23 @@ func (m *Membership) eventHandler() {
 }
 
 func (m *Membership) handleJoin(member serf.Member) {
+	// Skip if we're not running on port 3000 (not the bootstrap node)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000"
+	}
+
+	slog.Info("handling join event",
+		"member_name", member.Name,
+		"member_addr", member.Addr.String(),
+		"member_tags", member.Tags)
+
 	err := m.handler.Join(member.Name, member.Tags["rpc_addr"])
 	if err != nil {
-		slog.Error("failed to join", "member", member)
+		slog.Error("failed to join", "error", err, "member", member)
+		return
 	}
+	slog.Info("successfully handled join", "member", member.Name)
 }
 
 func (m *Membership) handleLeave(member serf.Member) {
