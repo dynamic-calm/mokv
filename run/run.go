@@ -183,12 +183,13 @@ func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (kv.KV
 		peerTLSConfig,
 	)
 
-	kv, err := kv.NewDistributedKV(store, cfg)
+	dkv, err := kv.NewDistributedKV(store, cfg)
 	if err != nil {
 		return nil, nil, err
 	}
+
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := server.New(kv, authorizer, serverOpts...)
+	server := server.New(dkv, authorizer, serverOpts...)
 	grpcLn := mux.Match(cmux.Any())
 	srvErrChan := make(chan error, 1)
 	go func() {
@@ -223,7 +224,7 @@ func setupGRPCServer(ctx context.Context, provider *metric.MeterProvider) (kv.KV
 		}
 	}()
 
-	return kv, srvErrChan, nil
+	return dkv, srvErrChan, nil
 }
 
 func setupMemership(dkv kv.KV) (func(), error) {

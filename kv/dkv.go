@@ -202,19 +202,6 @@ func (dkv *DistributedKV) setupRaft(dataDir string) error {
 	config := raft.DefaultConfig()
 	config.LocalID = dkv.cfg.Raft.LocalID
 
-	// Add these configurations
-	config.TrailingLogs = 10                  // Keep more logs
-	config.SnapshotInterval = 5 * time.Minute // Take snapshots less frequently
-	config.SnapshotThreshold = 1024           // Keep more logs before snapshot
-
-	// Lower timeouts for development
-	config.HeartbeatTimeout = 1000 * time.Millisecond
-	config.ElectionTimeout = 1000 * time.Millisecond
-	config.CommitTimeout = 100 * time.Millisecond
-
-	// Use smaller batches for replication
-	config.MaxAppendEntries = 32
-
 	// To override in tests
 	if dkv.cfg.Raft.HeartbeatTimeout != 0 {
 		config.HeartbeatTimeout = dkv.cfg.Raft.HeartbeatTimeout
