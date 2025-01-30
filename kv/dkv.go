@@ -99,6 +99,22 @@ func (dkv *DistributedKV) List() <-chan []byte {
 	return dkv.kv.List()
 }
 
+func (dkv *DistributedKV) GetServers() ([]*api.Server, error) {
+	future := dkv.raft.GetConfiguration()
+	if err := future.Error(); err != nil {
+		return nil, fmt.Errorf("failed on get raft configuration future: %w", err)
+	}
+	var servers []*api.Server
+	for _, server := range future.Configuration().Servers {
+		servers = append(servers, &api.Server{
+			Id:       string(server.ID),
+			RpcAddr:  string(server.Address),
+			IsLeader: dkv.raft.Leader() == server.Address,
+		})
+	}
+	return servers, nil
+}
+
 func (dkv *DistributedKV) Join(id, addr string) error {
 	slog.Info("attempting to join", "id", id, "addr", addr)
 

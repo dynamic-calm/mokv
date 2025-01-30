@@ -2,7 +2,7 @@ name: Go Tests
 
 on:
   push:
-    branches: [client]
+    branches: [main]
   pull_request:
     branches: [main]
 
