@@ -27,6 +27,10 @@ type KV interface {
 	List() <-chan []byte
 }
 
+type ServerProvider interface {
+	GetServers() ([]*api.Server, error)
+}
+
 type RequestType uint8
 
 const (
@@ -52,7 +56,7 @@ type DistributedKV struct {
 	raft *raft.Raft
 }
 
-func NewDistributedKV(store store.Store, cfg *Config) (KV, error) {
+func NewDistributedKV(store store.Store, cfg *Config) (*DistributedKV, error) {
 	kv := New(store)
 	dkv := &DistributedKV{cfg: cfg, kv: kv}
 	if err := dkv.setupRaft(dkv.cfg.DataDir); err != nil {

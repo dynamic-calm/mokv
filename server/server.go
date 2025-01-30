@@ -17,8 +17,9 @@ import (
 
 type kvServer struct {
 	api.KVServer
-	KV         kv.KV
-	authorizer Authorizer
+	KV           kv.KV
+	authorizer   Authorizer
+	serverGetter kv.ServerProvider
 }
 
 const (
@@ -29,6 +30,21 @@ const (
 
 type Authorizer interface {
 	Authorize(subject, object, action string) error
+}
+
+func NewServerGetter(kv kv.KV) kv.ServerProvider {
+	return &kvServerGetter{kv: kv}
+}
+
+type kvServerGetter struct {
+	kv kv.KV
+}
+
+func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
+	if provider, ok := kg.kv.(kv.ServerProvider); ok {
+		return provider.GetServers()
+	}
+	return nil, fmt.Errorf("kv store does not support getting servers")
 }
 
 func New(KV kv.KV, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
@@ -42,7 +58,12 @@ func New(KV kv.KV, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Serve
 	)))
 
 	s := grpc.NewServer(opts...)
-	srv := &kvServer{KV: KV, authorizer: authorizer}
+	serverGetter := NewServerGetter(KV)
+	srv := &kvServer{
+		KV:           KV,
+		serverGetter: serverGetter,
+		authorizer:   authorizer,
+	}
 	api.RegisterKVServer(s, srv)
 	return s
 }
@@ -99,6 +120,14 @@ func (s *kvServer) List(req *api.Empty, stream grpc.ServerStreamingServer[api.Ge
 	}
 
 	return nil
+}
+
+func (s *kvServer) GetServers(ctx context.Context, req *api.Empty) (*api.GetServersResponse, error) {
+	servers, err := s.serverGetter.GetServers()
+	if err != nil {
+		return nil, err
+	}
+	return &api.GetServersResponse{Servers: servers}, nil
 }
 
 func (s *kvServer) notFoundMsg(key string) string {

@@ -110,7 +110,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	time.Sleep(3 * time.Second)
 
 	// Join node2 to the cluster
-	dkv1 := node1.(*kv.DistributedKV)
+	dkv1 := node1
 	err = dkv1.Join("node-2", "127.0.0.1:3002")
 	if err != nil {
 		t.Fatalf("failed to join node 2 to cluster: %v", err)
