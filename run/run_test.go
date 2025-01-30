@@ -73,6 +73,13 @@ func TestRunE2E(t *testing.T) {
 		t.Fatalf("got wrong value back")
 	}
 
+	servers, err := client.GetServers(ctx, &api.Empty{})
+	if err != nil {
+		t.Fatalf("failed to get servers: %s", err)
+	}
+
+	fmt.Println("servers", servers)
+
 	metricsResp, err := http.Get("http://localhost:4000/metrics")
 	if err != nil {
 		t.Fatalf("failed to get metrics: %s", err)
