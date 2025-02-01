@@ -10,7 +10,7 @@ import (
 
 func main() {
 	ctx := context.Background()
-	if err := run.Run(ctx, os.Getenv); err != nil {
+	if err := run.Run(ctx, os.Getenv, run.Config{}); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}

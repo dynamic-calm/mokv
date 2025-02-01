@@ -3,6 +3,7 @@ package run
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -30,12 +31,23 @@ import (
 	"google.golang.org/grpc/stats/opentelemetry"
 )
 
-type Agent struct {
-	kv *kv.DistributedKV
+type Config struct {
+	DataDir         string
+	NodeName        string
+	BindAddr        string
+	RPCPort         int
+	MetricsPort     int
+	StartJoinAddrs  []string
+	Bootstrap       bool
+	ACLModelFile    string
+	ACLPolicyFile   string
+	ServerTLSConfig *tls.Config
+	PeerTLSConfig   *tls.Config
 }
+
 type GetEnv func(string) string
 
-func Run(ctx context.Context, getenv GetEnv) error {
+func Run(ctx context.Context, getenv GetEnv, cfg Config) error {
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
@@ -45,11 +57,11 @@ func Run(ctx context.Context, getenv GetEnv) error {
 		return err
 	}
 
-	kv, errChan, err := setupGRPCServer(ctx, getenv, provider)
+	kv, errChan, err := setupGRPCServer(ctx, getenv, provider, cfg)
 	if err != nil {
 		return err
 	}
-	shutdown, err := setupMemership(kv, getenv)
+	shutdown, err := setupMemership(kv, getenv, cfg)
 	if err != nil {
 		return err
 	}
@@ -101,16 +113,11 @@ func setupMetricsServer(ctx context.Context, getenv GetEnv) (*metric.MeterProvid
 	return provider, nil
 }
 
-func setupGRPCServer(ctx context.Context, getenv GetEnv, provider *metric.MeterProvider) (kv.KV, chan error, error) {
+func setupGRPCServer(ctx context.Context, getenv GetEnv, provider *metric.MeterProvider, cfg Config) (kv.KV, chan error, error) {
 	_, cancel := context.WithCancel(ctx)
 
 	defer cancel()
-	port := getenv("PORT")
-	if port == "" {
-		port = "3000"
-		slog.Warn("PORT not set", "using", port)
-	}
-
+	port := strconv.Itoa(cfg.RPCPort)
 	listener, err := net.Listen("tcp", "127.0.0.1:"+port)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to listen: %w", err)
@@ -118,20 +125,8 @@ func setupGRPCServer(ctx context.Context, getenv GetEnv, provider *metric.MeterP
 
 	mux := cmux.New(listener)
 
-	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.ServerCertFile,
-		KeyFile:       config.ServerKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: listener.Addr().String(),
-		Server:        true,
-	})
-
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to setup TLS: %w", err)
-	}
-
 	serverOpts := []grpc.ServerOption{
-		grpc.Creds(credentials.NewTLS(serverTLSConfig)),
+		grpc.Creds(credentials.NewTLS(cfg.ServerTLSConfig)),
 		opentelemetry.ServerOption(
 			opentelemetry.Options{
 				MetricsOptions: opentelemetry.MetricsOptions{
@@ -142,15 +137,6 @@ func setupGRPCServer(ctx context.Context, getenv GetEnv, provider *metric.MeterP
 	}
 
 	store := store.New()
-	hostname, err := os.Hostname()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get hostname: %w", err)
-	}
-	parsedPort, err := strconv.Atoi(port)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse port: %w", err)
-	}
-	raftPort := strconv.Itoa(parsedPort + 1000)
 	dataDir := filepath.Join("data", fmt.Sprintf("node-%s", port))
 	absDataDir, err := filepath.Abs(dataDir)
 	if err != nil {
@@ -158,13 +144,13 @@ func setupGRPCServer(ctx context.Context, getenv GetEnv, provider *metric.MeterP
 	}
 	dataDir = absDataDir
 
-	cfg := &kv.Config{
+	kvCFG := &kv.Config{
 		DataDir: dataDir,
 	}
-	cfg.Raft.BindAddr = fmt.Sprintf("127.0.0.1:%s", raftPort)
-	cfg.Raft.RPCPort = port
-	cfg.Raft.LocalID = raft.ServerID(fmt.Sprintf("%s-%s", hostname, port))
-	cfg.Raft.Bootstrap = port == "3000"
+	kvCFG.Raft.BindAddr = cfg.BindAddr
+	kvCFG.Raft.RPCPort = port
+	kvCFG.Raft.LocalID = raft.ServerID(cfg.NodeName)
+	kvCFG.Raft.Bootstrap = cfg.Bootstrap
 
 	// Create a Raft listener for incoming connections that
 	// have RaftRPC as first byte. This way we can multiplex
@@ -177,20 +163,13 @@ func setupGRPCServer(ctx context.Context, getenv GetEnv, provider *metric.MeterP
 		return bytes.Compare(b, []byte{byte(kv.RaftRPC)}) == 0
 	})
 
-	peerTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.RootClientCertFile,
-		KeyFile:       config.RootClientKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: "localhost",
-	})
-
-	cfg.Raft.StreamLayer = *kv.NewStreamLayer(
+	kvCFG.Raft.StreamLayer = *kv.NewStreamLayer(
 		raftLn,
-		serverTLSConfig,
-		peerTLSConfig,
+		cfg.ServerTLSConfig,
+		cfg.PeerTLSConfig,
 	)
 
-	dkv, err := kv.NewDistributedKV(store, cfg)
+	dkv, err := kv.NewDistributedKV(store, kvCFG)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -230,23 +209,10 @@ func setupGRPCServer(ctx context.Context, getenv GetEnv, provider *metric.MeterP
 	return dkv, srvErrChan, nil
 }
 
-func setupMemership(dkv kv.KV, getenv GetEnv) (func(), error) {
+func setupMemership(dkv kv.KV, getenv GetEnv, cfg Config) (func(), error) {
 	port := getenv("PORT")
 	if port == "" {
 		port = "3000"
-	}
-
-	nodePort := fmt.Sprintf("%d", 8400+func() int {
-		p, _ := strconv.Atoi(port)
-		return p - 3000
-	}())
-
-	hostname, _ := os.Hostname()
-	nodeName := fmt.Sprintf("%s-%s", hostname, port)
-
-	var startJoinAddrs []string
-	if port != "3000" {
-		startJoinAddrs = []string{"127.0.0.1:8400"}
 	}
 
 	distributedKV, ok := dkv.(*kv.DistributedKV)
@@ -255,12 +221,12 @@ func setupMemership(dkv kv.KV, getenv GetEnv) (func(), error) {
 	}
 
 	membership, err := discovery.New(distributedKV, discovery.Config{
-		NodeName: nodeName,
-		BindAddr: fmt.Sprintf("127.0.0.1:%s", nodePort),
+		NodeName: cfg.NodeName,
+		BindAddr: cfg.BindAddr,
 		Tags: map[string]string{
-			"rpc_addr": fmt.Sprintf("127.0.0.1:%s", port),
+			"rpc_addr": cfg.BindAddr,
 		},
-		StartJoinAddrs: startJoinAddrs,
+		StartJoinAddrs: cfg.StartJoinAddrs,
 	})
 
 	if err != nil {
