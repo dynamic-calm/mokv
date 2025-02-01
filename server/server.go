@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 	status "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type kvServer struct {
@@ -104,7 +105,7 @@ func (s *kvServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.Del
 	return &api.DeleteResponse{Ok: true}, nil
 }
 
-func (s *kvServer) List(req *api.Empty, stream grpc.ServerStreamingServer[api.GetResponse]) error {
+func (s *kvServer) List(req *emptypb.Empty, stream grpc.ServerStreamingServer[api.GetResponse]) error {
 	if err := s.authorizer.Authorize(subject(stream.Context()), objectWildcard, consumeAction); err != nil {
 		return err
 	}
@@ -122,7 +123,7 @@ func (s *kvServer) List(req *api.Empty, stream grpc.ServerStreamingServer[api.Ge
 	return nil
 }
 
-func (s *kvServer) GetServers(ctx context.Context, req *api.Empty) (*api.GetServersResponse, error) {
+func (s *kvServer) GetServers(ctx context.Context, req *emptypb.Empty) (*api.GetServersResponse, error) {
 	servers, err := s.serverGetter.GetServers()
 	if err != nil {
 		return nil, err

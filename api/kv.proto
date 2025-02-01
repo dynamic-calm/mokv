@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+import "google/protobuf/empty.proto";
+
 package api;
 
 option go_package = "github.com/mateopresacastro/mokv/api";
@@ -44,8 +46,6 @@ service KV {
     rpc Get(GetRequest) returns (GetResponse) {}
     rpc Set(SetRequest) returns (SetResponse) {}
     rpc Delete(DeleteRequest) returns (DeleteResponse) {}
-    rpc List(Empty) returns (stream GetResponse) {}
-    rpc GetServers(Empty) returns (GetServersResponse){}
+    rpc List(google.protobuf.Empty) returns (stream GetResponse) {}
+    rpc GetServers(google.protobuf.Empty) returns (GetServersResponse){}
 }
-
-message Empty {}
