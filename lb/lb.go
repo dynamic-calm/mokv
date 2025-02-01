@@ -22,7 +22,6 @@ type Resolver struct {
 	serviceConfig *serviceconfig.ParseResult
 }
 
-// The resolver gets registered in gRPC
 func init() {
 	resolver.Register(&Resolver{})
 }
