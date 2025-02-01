@@ -10,6 +10,7 @@ import (
 
 	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/config"
+	"github.com/mateopresacastro/mokv/lb"
 	"github.com/mateopresacastro/mokv/run"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -34,6 +35,8 @@ func TestRunE2E(t *testing.T) {
 		errChan <- run.Run(ctx, getenv)
 	}()
 
+	time.Sleep(3 * time.Second)
+
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.RootClientCertFile,
 		KeyFile:       config.RootClientKeyFile,
@@ -46,7 +49,7 @@ func TestRunE2E(t *testing.T) {
 
 	clientCreds := credentials.NewTLS(clientTLSConfig)
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("localhost:%d", 3000),
+		fmt.Sprintf("%s:///%s", lb.Name, "localhost:3000"),
 		grpc.WithTransportCredentials(clientCreds),
 	)
 	if err != nil {
@@ -69,6 +72,15 @@ func TestRunE2E(t *testing.T) {
 
 	if !bytes.Equal(resp.Value, value) {
 		t.Fatalf("got wrong value back")
+	}
+
+	getServersRes, err := client.GetServers(ctx, &api.Empty{})
+	if err != nil {
+		t.Fatalf("failed to get servers: %s", err)
+	}
+
+	if len(getServersRes.Servers) < 1 {
+		t.Fatal("we must have at least one server")
 	}
 
 	metricsResp, err := http.Get("http://localhost:4000/metrics")

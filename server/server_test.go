@@ -105,7 +105,6 @@ func TestAPI(t *testing.T) {
 	if err == nil {
 		t.Fatal("we should have an error when getting not existing key")
 	}
-
 }
 
 func TestStream(t *testing.T) {

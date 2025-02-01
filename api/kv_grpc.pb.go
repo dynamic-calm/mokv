@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	KV_Get_FullMethodName    = "/api.KV/Get"
-	KV_Set_FullMethodName    = "/api.KV/Set"
-	KV_Delete_FullMethodName = "/api.KV/Delete"
-	KV_List_FullMethodName   = "/api.KV/List"
+	KV_Get_FullMethodName        = "/api.KV/Get"
+	KV_Set_FullMethodName        = "/api.KV/Set"
+	KV_Delete_FullMethodName     = "/api.KV/Delete"
+	KV_List_FullMethodName       = "/api.KV/List"
+	KV_GetServers_FullMethodName = "/api.KV/GetServers"
 )
 
 // KVClient is the client API for KV service.
@@ -33,6 +34,7 @@ type KVClient interface {
 	Set(ctx context.Context, in *SetRequest, opts ...grpc.CallOption) (*SetResponse, error)
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
 	List(ctx context.Context, in *Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetResponse], error)
+	GetServers(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*GetServersResponse, error)
 }
 
 type kVClient struct {
@@ -92,6 +94,16 @@ func (c *kVClient) List(ctx context.Context, in *Empty, opts ...grpc.CallOption)
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type KV_ListClient = grpc.ServerStreamingClient[GetResponse]
 
+func (c *kVClient) GetServers(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*GetServersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetServersResponse)
+	err := c.cc.Invoke(ctx, KV_GetServers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // KVServer is the server API for KV service.
 // All implementations must embed UnimplementedKVServer
 // for forward compatibility.
@@ -100,6 +112,7 @@ type KVServer interface {
 	Set(context.Context, *SetRequest) (*SetResponse, error)
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
 	List(*Empty, grpc.ServerStreamingServer[GetResponse]) error
+	GetServers(context.Context, *Empty) (*GetServersResponse, error)
 	mustEmbedUnimplementedKVServer()
 }
 
@@ -121,6 +134,9 @@ func (UnimplementedKVServer) Delete(context.Context, *DeleteRequest) (*DeleteRes
 }
 func (UnimplementedKVServer) List(*Empty, grpc.ServerStreamingServer[GetResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedKVServer) GetServers(context.Context, *Empty) (*GetServersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetServers not implemented")
 }
 func (UnimplementedKVServer) mustEmbedUnimplementedKVServer() {}
 func (UnimplementedKVServer) testEmbeddedByValue()            {}
@@ -208,6 +224,24 @@ func _KV_List_Handler(srv interface{}, stream grpc.ServerStream) error {
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type KV_ListServer = grpc.ServerStreamingServer[GetResponse]
 
+func _KV_GetServers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KVServer).GetServers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KV_GetServers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVServer).GetServers(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // KV_ServiceDesc is the grpc.ServiceDesc for KV service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -226,6 +260,10 @@ var KV_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _KV_Delete_Handler,
+		},
+		{
+			MethodName: "GetServers",
+			Handler:    _KV_GetServers_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

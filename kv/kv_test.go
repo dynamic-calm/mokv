@@ -110,7 +110,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	time.Sleep(3 * time.Second)
 
 	// Join node2 to the cluster
-	dkv1 := node1.(*kv.DistributedKV)
+	dkv1 := node1
 	err = dkv1.Join("node-2", "127.0.0.1:3002")
 	if err != nil {
 		t.Fatalf("failed to join node 2 to cluster: %v", err)
@@ -133,8 +133,33 @@ func TestDistributedKVReplication(t *testing.T) {
 		t.Errorf("replication failed: got %s, want test-value", string(value))
 	}
 
+	// Test leader
+	servers, err := dkv1.GetServers()
+	if err != nil {
+		t.Fatalf("failed to get servers: %v", err)
+	}
+	if len(servers) != 2 {
+		t.Fatal("we should have two servers")
+	}
+
+	if !servers[0].IsLeader {
+		t.Fatalf("the node 1 should be the leader: %v", err)
+	}
+
+	if servers[1].IsLeader {
+		t.Fatalf("the node 2 should not be the leader: %v", err)
+	}
+
 	// Leave node 2
 	dkv1.Leave("node-2")
+	time.Sleep(1 * time.Second)
+	servers, err = dkv1.GetServers()
+	if err != nil {
+		t.Fatalf("failed to get servers: %v", err)
+	}
+	if len(servers) != 1 {
+		t.Fatal("we should have one server")
+	}
 
 	// Setup third node
 	dir3 := filepath.Join(os.TempDir(), "node-3")
@@ -206,4 +231,5 @@ func TestDistributedKVReplication(t *testing.T) {
 	if string(value) == "test-value2" {
 		t.Errorf("we read the data from a node not in the cluser")
 	}
+
 }

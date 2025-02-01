@@ -30,11 +30,22 @@ message DeleteResponse {
     bool ok = 1;
 }
 
+message Server {
+    string id = 1;
+    string rpc_addr = 2;
+    bool is_leader = 3;
+}
+
+message GetServersResponse{
+    repeated Server servers = 1;
+}
+
 service KV {
     rpc Get(GetRequest) returns (GetResponse) {}
     rpc Set(SetRequest) returns (SetResponse) {}
     rpc Delete(DeleteRequest) returns (DeleteResponse) {}
     rpc List(Empty) returns (stream GetResponse) {}
+    rpc GetServers(Empty) returns (GetServersResponse){}
 }
 
 message Empty {}

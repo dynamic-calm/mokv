@@ -27,6 +27,10 @@ type KV interface {
 	List() <-chan []byte
 }
 
+type ServerProvider interface {
+	GetServers() ([]*api.Server, error)
+}
+
 type RequestType uint8
 
 const (
@@ -52,7 +56,7 @@ type DistributedKV struct {
 	raft *raft.Raft
 }
 
-func NewDistributedKV(store store.Store, cfg *Config) (KV, error) {
+func NewDistributedKV(store store.Store, cfg *Config) (*DistributedKV, error) {
 	kv := New(store)
 	dkv := &DistributedKV{cfg: cfg, kv: kv}
 	if err := dkv.setupRaft(dkv.cfg.DataDir); err != nil {
@@ -66,8 +70,12 @@ func (dkv *DistributedKV) Set(key string, value []byte) error {
 	if err := dkv.WaitForLeader(3 * time.Second); err != nil {
 		return fmt.Errorf("failed waiting for leader after join: %w", err)
 	}
+	err := dkv.kv.Set(key, value)
+	if err != nil {
+		return fmt.Errorf("failed to set key: %s, val: %s from kv: %w", key, string(value), err)
+	}
 	// Replicate Set
-	_, err := dkv.apply(SetRequestType, &api.SetRequest{Key: key, Value: value})
+	_, err = dkv.apply(SetRequestType, &api.SetRequest{Key: key, Value: value})
 	if err != nil {
 		return fmt.Errorf("failed to apply raft set: %w", err)
 	}
@@ -75,10 +83,14 @@ func (dkv *DistributedKV) Set(key string, value []byte) error {
 }
 
 func (dkv *DistributedKV) Delete(key string) error {
-	// Replicate Delete
-	_, err := dkv.apply(DeleteRequestType, &api.DeleteRequest{Key: key})
+	err := dkv.kv.Delete(key)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to delete key: %s from kv: %w", key, err)
+	}
+	// Replicate Delete
+	_, err = dkv.apply(DeleteRequestType, &api.DeleteRequest{Key: key})
+	if err != nil {
+		return fmt.Errorf("failed to apply replication deleting key: %s from kv: %w", key, err)
 	}
 	return nil
 }
@@ -89,6 +101,22 @@ func (dkv *DistributedKV) Get(key string) ([]byte, error) {
 
 func (dkv *DistributedKV) List() <-chan []byte {
 	return dkv.kv.List()
+}
+
+func (dkv *DistributedKV) GetServers() ([]*api.Server, error) {
+	future := dkv.raft.GetConfiguration()
+	if err := future.Error(); err != nil {
+		return nil, fmt.Errorf("failed on get raft configuration future: %w", err)
+	}
+	var servers []*api.Server
+	for _, server := range future.Configuration().Servers {
+		servers = append(servers, &api.Server{
+			Id:       string(server.ID),
+			RpcAddr:  string(server.Address),
+			IsLeader: dkv.raft.Leader() == server.Address,
+		})
+	}
+	return servers, nil
 }
 
 func (dkv *DistributedKV) Join(id, addr string) error {
