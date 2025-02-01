@@ -10,6 +10,7 @@ import (
 
 	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/config"
+	"github.com/mateopresacastro/mokv/lb"
 	"github.com/mateopresacastro/mokv/run"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -48,7 +49,7 @@ func TestRunE2E(t *testing.T) {
 
 	clientCreds := credentials.NewTLS(clientTLSConfig)
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("localhost:%d", 3000),
+		fmt.Sprintf("%s:///%s", lb.Name, "localhost:3000"),
 		grpc.WithTransportCredentials(clientCreds),
 	)
 	if err != nil {

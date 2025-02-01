@@ -13,6 +13,8 @@ import (
 	"google.golang.org/grpc/serviceconfig"
 )
 
+const Name = "mokv"
+
 type Resolver struct {
 	mu            sync.Mutex
 	clientConn    resolver.ClientConn
@@ -20,7 +22,10 @@ type Resolver struct {
 	serviceConfig *serviceconfig.ParseResult
 }
 
-const Name = "mokv"
+// The resolver gets registered in gRPC
+func init() {
+	resolver.Register(&Resolver{})
+}
 
 var _ resolver.Builder = (*Resolver)(nil)
 
@@ -52,10 +57,6 @@ func (r *Resolver) Build(
 
 func (r *Resolver) Scheme() string {
 	return Name
-}
-
-func init() {
-	resolver.Register(&Resolver{})
 }
 
 var _ resolver.Resolver = (*Resolver)(nil)
