@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 const Name = "mokv"
@@ -65,13 +66,17 @@ func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 	defer r.mu.Unlock()
 	client := api.NewKVClient(r.resolverConn)
 	ctx := context.Background()
-	res, err := client.GetServers(ctx, &api.Empty{})
+	res, err := client.GetServers(ctx, &emptypb.Empty{})
 	if err != nil {
 		slog.Error("failed to resolve server", "err", err)
 		return
 	}
 	var addrs []resolver.Address
+	leaderExists := false
 	for _, server := range res.Servers {
+		if server.IsLeader {
+			leaderExists = true
+		}
 		addrs = append(addrs, resolver.Address{
 			Addr: server.RpcAddr,
 			Attributes: attributes.New(
@@ -79,6 +84,9 @@ func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 				server.IsLeader,
 			),
 		})
+	}
+	if !leaderExists {
+		
 	}
 	r.clientConn.UpdateState(resolver.State{
 		Addresses:     addrs,

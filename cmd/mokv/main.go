@@ -4,12 +4,10 @@ import (
 	"context"
 	"log"
 	"os"
-	"os/signal"
 	"path"
-	"syscall"
 
 	"github.com/mateopresacastro/mokv/config"
-	"github.com/mateopresacastro/mokv/run"
+	"github.com/mateopresacastro/mokv/runner"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -19,7 +17,7 @@ type cli struct {
 }
 
 type cfg struct {
-	run.Config
+	runner.Config
 	ServerTLSConfig config.TLSConfig
 	PeerTLSConfig   config.TLSConfig
 }
@@ -29,7 +27,7 @@ func main() {
 	cmd := &cobra.Command{
 		Use:     "mokv",
 		PreRunE: cli.setupConfig,
-		RunE:    cli.run,
+		RunE:     cli.run,
 	}
 
 	if err := setupFlags(cmd); err != nil {
@@ -117,14 +115,9 @@ func (c *cli) setupConfig(cmd *cobra.Command, args []string) error {
 }
 func (c *cli) run(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	err := run.Run(ctx, os.Getenv, c.cfg.Config)
-	if err != nil {
+	r := runner.New(c.cfg.Config, os.Getenv)
+	if err := r.Run(ctx); err != nil {
 		return err
 	}
-
-	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
-	<-sigc
-
 	return nil
 }

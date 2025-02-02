@@ -1,4 +1,4 @@
-package run_test
+package runner_test
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/config"
 	"github.com/mateopresacastro/mokv/lb"
-	"github.com/mateopresacastro/mokv/run"
+	"github.com/mateopresacastro/mokv/runner"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -32,7 +32,7 @@ func TestRunE2E(t *testing.T) {
 	errChan := make(chan error, 1)
 	go func() {
 		defer close(errChan)
-		errChan <- run.Run(ctx, getenv)
+		errChan <- runner.Run(ctx, getenv)
 	}()
 
 	time.Sleep(3 * time.Second)
