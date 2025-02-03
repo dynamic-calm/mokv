@@ -56,4 +56,10 @@ $(CONFIG_PATH)/model.conf:
 $(CONFIG_PATH)/policy.csv:
 		cp certs/policy.csv $(CONFIG_PATH)/policy.csv
 
+.PHONY: cicd
 cicd: compile gencert test
+
+.PHONY: build
+build:
+	go build -o mokv ./cmd/mokv/main.go
+
