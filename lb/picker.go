@@ -11,9 +11,9 @@ import (
 type Builder struct{}
 
 func init() {
-	// balancer.Register(
-	// 	base.NewBalancerBuilder(Name, &Builder{}, base.Config{}),
-	// )
+	balancer.Register(
+		base.NewBalancerBuilder(Name, &Builder{}, base.Config{}),
+	)
 }
 
 var _ base.PickerBuilder = (*Builder)(nil)
@@ -51,7 +51,8 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		return result, balancer.ErrNoSubConnAvailable
 	}
 
-	if strings.Contains(info.FullMethodName, "Produce") {
+	if strings.Contains(info.FullMethodName, "Set") ||
+		strings.Contains(info.FullMethodName, "Delete") {
 		if p.leader == nil {
 			return result, balancer.ErrNoSubConnAvailable
 		}
@@ -59,22 +60,25 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		return result, nil
 	}
 
-	if strings.Contains(info.FullMethodName, "Consume") {
-		if len(p.followers) > 0 {
-			result.SubConn = p.nextFollower()
-			return result, nil
-		}
-		if p.leader != nil {
-			result.SubConn = p.leader
-			return result, nil
-		}
+	if len(p.followers) > 0 {
+		result.SubConn = p.nextFollower()
+		return result, nil
+	}
+
+	if p.leader != nil {
+		result.SubConn = p.leader
+		return result, nil
 	}
 
 	return result, balancer.ErrNoSubConnAvailable
 }
 
 func (p *Picker) nextFollower() balancer.SubConn {
+	numFollowers := len(p.followers)
+	if numFollowers == 0 {
+		return nil
+	}
 	cur := atomic.AddUint64(&p.current, uint64(1))
-	idx := int(cur % uint64(len(p.followers)))
+	idx := int(cur % uint64(numFollowers))
 	return p.followers[idx]
 }
