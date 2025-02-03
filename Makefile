@@ -24,36 +24,36 @@ init:
 .PHONY: gencert
 gencert:
 	cfssl gencert \
-		-initca config/auth/ca-csr.json | cfssljson -bare ca
+		-initca certs/ca-csr.json | cfssljson -bare ca
 
 	cfssl gencert \
 		-ca=ca.pem \
 		-ca-key=ca-key.pem \
-		-config=config/auth/ca-config.json \
+		-config=certs/ca-config.json \
 		-profile=server \
-		config/auth/server-csr.json | cfssljson -bare server
+		certs/server-csr.json | cfssljson -bare server
 
 	cfssl gencert \
 		-ca=ca.pem \
 		-ca-key=ca-key.pem \
-		-config=config/auth/ca-config.json \
+		-config=certs/ca-config.json \
 		-profile=client \
 		-cn="root" \
-		config/auth/client-csr.json | cfssljson -bare root-client
+		certs/client-csr.json | cfssljson -bare root-client
 
 	cfssl gencert \
 		-ca=ca.pem \
 		-ca-key=ca-key.pem \
-		-config=config/auth/ca-config.json \
+		-config=certs/ca-config.json \
 		-profile=client \
 		-cn="nobody" \
-		config/auth/client-csr.json | cfssljson -bare nobody-client
+		certs/client-csr.json | cfssljson -bare nobody-client
 
 	mv *.pem *.csr ${CONFIG_PATH}
 
 $(CONFIG_PATH)/model.conf:
-		cp config/auth/model.conf $(CONFIG_PATH)/model.conf
+		cp certs/model.conf $(CONFIG_PATH)/model.conf
 $(CONFIG_PATH)/policy.csv:
-		cp config/auth/policy.csv $(CONFIG_PATH)/policy.csv
+		cp certs/policy.csv $(CONFIG_PATH)/policy.csv
 
 cicd: compile gencert test
