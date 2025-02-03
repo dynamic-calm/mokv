@@ -1,0 +1,16 @@
+data-dir: "/tmp/mokv2"
+node-name: "my-node2"
+bind-addr: "127.0.0.1:8403"
+rpc-port: 8402
+metrics-port: 4003
+start-join-addrs:
+  - "127.0.0.1:8401"
+bootstrap: false
+acl-model-file: "/Users/mateopresa/.mokv/model.conf"
+acl-policy-file: "/Users/mateopresa/.mokv/policy.csv"
+server-tls-cert-file: "/Users/mateopresa/.mokv/server.pem"
+server-tls-key-file: "/Users/mateopresa/.mokv/server-key.pem"
+server-tls-ca-file: "/Users/mateopresa/.mokv/ca.pem"
+peer-tls-cert-file: "/Users/mateopresa/.mokv/root-client.pem"
+peer-tls-key-file: "/Users/mateopresa/.mokv/root-client-key.pem"
+peer-tls-ca-file: "/Users/mateopresa/.mokv/ca.pem"

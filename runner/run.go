@@ -47,13 +47,13 @@ type Config struct {
 type GetEnv func(string) string
 
 type Runner struct {
-	cfg           Config
+	cfg           *Config
 	getEnv        GetEnv
 	dkv           kv.KV
 	meterProvider *metric.MeterProvider
 }
 
-func New(cfg Config, getEnv GetEnv) *Runner {
+func New(cfg *Config, getEnv GetEnv) *Runner {
 	return &Runner{cfg: cfg, getEnv: getEnv}
 }
 
@@ -180,28 +180,35 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 
 	go func() {
 		defer close(errc)
+		grpcec := make(chan error, 1)
 		go func() {
+			defer close(grpcec)
 			slog.Info("gRPC server listening...", "addr", listener.Addr())
 			if err := server.Serve(grpcLn); err != nil {
-				errc <- fmt.Errorf("gRPC server error: %w", err)
+				grpcec <- fmt.Errorf("gRPC server error: %w", err)
 			}
 		}()
 
+		muxec := make(chan error, 1)
 		go func() {
+			defer close(muxec)
 			slog.Info("multiplexer listening...")
 			if err := mux.Serve(); err != nil {
-				errc <- fmt.Errorf("multiplexer server error: %w", err)
+				muxec <- fmt.Errorf("multiplexer server error: %w", err)
 			}
 		}()
 
-		<-ctx.Done()
-		// The context is done when user stops the process or there is an error
-		// on the errc channel. The context gets cancelled on the defer
-		// of the Run function.
-		server.GracefulStop()
-		listener.Close()
-		grpcLn.Close()
-		mux.Close()
+		select {
+		case <-ctx.Done():
+			mux.Close()
+			server.GracefulStop()
+			listener.Close()
+			slog.Info("Shutdown complete for gRPC server")
+		case err := <-grpcec:
+			errc <- err
+		case err := <-muxec:
+			errc <- err
+		}
 	}()
 
 	return errc, nil
@@ -212,12 +219,12 @@ func (r *Runner) setupMemership(ctx context.Context) error {
 	if !ok {
 		return fmt.Errorf("failed to convert kv to *kv.DistributedKV")
 	}
-
+	rpcAddr := fmt.Sprintf("127.0.0.1:%d", r.cfg.RPCPort)
 	membership, err := discovery.New(distributedKV, discovery.Config{
 		NodeName: r.cfg.NodeName,
 		BindAddr: r.cfg.BindAddr,
 		Tags: map[string]string{
-			"rpc_addr": r.cfg.BindAddr,
+			"rpc_addr": rpcAddr,
 		},
 		StartJoinAddrs: r.cfg.StartJoinAddrs,
 	})

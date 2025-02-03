@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -14,25 +17,57 @@ import (
 	"github.com/mateopresacastro/mokv/runner"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func TestRunE2E(t *testing.T) {
-	getenv := func(key string) string {
-		switch key {
-		case "PORT":
-			return "3000"
-		case "METRICS_PORT":
-			return "4000"
-		default:
-			return ""
-		}
+	ctx, cancel := context.WithCancel(context.Background())
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	errChan := make(chan error, 1)
+	serverTLSConfig, err := config.SetupTLSConfig(
+		config.TLSConfig{
+			CertFile:      config.ServerCertFile,
+			KeyFile:       config.ServerKeyFile,
+			CAFile:        config.CAFile,
+			ServerAddress: "127.0.0.1",
+			Server:        true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("server TLS setup failed: %s", err)
+	}
+
+	peerTLSConfig, err := config.SetupTLSConfig(
+		config.TLSConfig{
+			CertFile:      config.RootClientCertFile,
+			KeyFile:       config.RootClientKeyFile,
+			CAFile:        config.CAFile,
+			ServerAddress: "127.0.0.1",
+		},
+	)
+	if err != nil {
+		t.Fatalf("peer TLS setup failed: %s", err)
+	}
+
+	cfg := &runner.Config{
+		DataDir:         path.Join(os.TempDir(), "mokv-test"),
+		NodeName:        hostname,
+		BindAddr:        "127.0.0.1:8401",
+		RPCPort:         8400,
+		Bootstrap:       true,
+		ACLModelFile:    config.ACLModelFile,
+		ACLPolicyFile:   config.ACLPolicyFile,
+		ServerTLSConfig: serverTLSConfig,
+		MetricsPort:     4000,
+		PeerTLSConfig:   peerTLSConfig,
+	}
+	r := runner.New(cfg, os.Getenv)
+
 	go func() {
-		defer close(errChan)
-		errChan <- runner.Run(ctx, getenv)
+		r.Run(ctx)
 	}()
 
 	time.Sleep(3 * time.Second)
@@ -74,7 +109,7 @@ func TestRunE2E(t *testing.T) {
 		t.Fatalf("got wrong value back")
 	}
 
-	getServersRes, err := client.GetServers(ctx, &api.Empty{})
+	getServersRes, err := client.GetServers(ctx, &emptypb.Empty{})
 	if err != nil {
 		t.Fatalf("failed to get servers: %s", err)
 	}
@@ -94,13 +129,4 @@ func TestRunE2E(t *testing.T) {
 	}
 
 	cancel()
-
-	select {
-	case err := <-errChan:
-		if err != nil {
-			t.Fatalf("server error: %s", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("server didn't shut down")
-	}
 }

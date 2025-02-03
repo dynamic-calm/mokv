@@ -13,11 +13,11 @@ import (
 )
 
 type cli struct {
-	cfg cfg
+	cfg Cfg
 }
 
-type cfg struct {
-	runner.Config
+type Cfg struct {
+	*runner.Config
 	ServerTLSConfig config.TLSConfig
 	PeerTLSConfig   config.TLSConfig
 }
@@ -27,7 +27,7 @@ func main() {
 	cmd := &cobra.Command{
 		Use:     "mokv",
 		PreRunE: cli.setupConfig,
-		RunE:     cli.run,
+		RunE:    cli.run,
 	}
 
 	if err := setupFlags(cmd); err != nil {
@@ -60,11 +60,16 @@ func setupFlags(cmd *cobra.Command) error {
 	cmd.Flags().String("peer-tls-cert-file", "", "Path to peer tls cert.")
 	cmd.Flags().String("peer-tls-key-file", "", "Path to peer tls key.")
 	cmd.Flags().String("peer-tls-ca-file", "", "Path to peer certificate authority.")
+	cmd.Flags().Int("metrics-port", 4000, "Port for metrics server.")
 	return viper.BindPFlags(cmd.Flags())
 }
 
 func (c *cli) setupConfig(cmd *cobra.Command, args []string) error {
 	var err error
+	if c.cfg.Config == nil {
+		c.cfg.Config = &runner.Config{}
+	}
+
 	configFile, err := cmd.Flags().GetString("config-file")
 	if err != nil {
 		return err
@@ -87,15 +92,16 @@ func (c *cli) setupConfig(cmd *cobra.Command, args []string) error {
 	c.cfg.ServerTLSConfig.CertFile = viper.GetString("server-tls-cert-file")
 	c.cfg.ServerTLSConfig.KeyFile = viper.GetString("server-tls-key-file")
 	c.cfg.ServerTLSConfig.CAFile = viper.GetString("server-tls-ca-file")
+	c.cfg.ServerTLSConfig.ServerAddress = viper.GetString("node-name")
 	c.cfg.PeerTLSConfig.CertFile = viper.GetString("peer-tls-cert-file")
 	c.cfg.PeerTLSConfig.KeyFile = viper.GetString("peer-tls-key-file")
 	c.cfg.PeerTLSConfig.CAFile = viper.GetString("peer-tls-ca-file")
+	c.cfg.PeerTLSConfig.ServerAddress = viper.GetString("node-name")
+	c.cfg.MetricsPort = viper.GetInt("metrics-port")
 
 	if c.cfg.ServerTLSConfig.CertFile != "" && c.cfg.ServerTLSConfig.KeyFile != "" {
 		c.cfg.ServerTLSConfig.Server = true
-		c.cfg.Config.ServerTLSConfig, err = config.SetupTLSConfig(
-			c.cfg.ServerTLSConfig,
-		)
+		c.cfg.Config.ServerTLSConfig, err = config.SetupTLSConfig(c.cfg.ServerTLSConfig)
 		if err != nil {
 			return err
 		}
@@ -111,8 +117,8 @@ func (c *cli) setupConfig(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-
 }
+
 func (c *cli) run(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	r := runner.New(c.cfg.Config, os.Getenv)

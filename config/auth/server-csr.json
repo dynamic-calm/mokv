@@ -1,6 +1,6 @@
 {
   "CN": "127.0.0.1",
-  "hosts": ["localhost", "127.0.0.1"],
+  "hosts": ["localhost", "127.0.0.1", "my-node", "my-node2"],
   "key": {
     "algo": "rsa",
     "size": 2048
