@@ -67,9 +67,6 @@ func NewDistributedKV(store store.Store, cfg *Config) (*DistributedKV, error) {
 }
 
 func (dkv *DistributedKV) Set(key string, value []byte) error {
-	if err := dkv.WaitForLeader(3 * time.Second); err != nil {
-		return fmt.Errorf("failed waiting for leader on set: %w", err)
-	}
 	err := dkv.kv.Set(key, value)
 	if err != nil {
 		return fmt.Errorf("failed to set key: %s, val: %s from kv: %w", key, string(value), err)

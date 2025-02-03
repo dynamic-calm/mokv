@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/mateopresacastro/mokv/api"
 	"google.golang.org/grpc"
@@ -25,6 +26,7 @@ type Resolver struct {
 
 func init() {
 	resolver.Register(&Resolver{})
+	slog.Info("registered mokv resolver")
 }
 
 var _ resolver.Builder = (*Resolver)(nil)
@@ -34,6 +36,7 @@ func (r *Resolver) Build(
 	cc resolver.ClientConn,
 	opts resolver.BuildOptions,
 ) (resolver.Resolver, error) {
+	slog.Info("building resolver", "target", target.Endpoint())
 	r.clientConn = cc
 	var dialOpts []grpc.DialOption
 	if opts.DialCreds != nil {
@@ -46,6 +49,7 @@ func (r *Resolver) Build(
 		fmt.Sprintf(`{"loadBalancingConfig":[{"%s":{}}]}`, Name),
 	)
 	var err error
+	slog.Info("creating resolver con", "endpoint", target.Endpoint())
 	r.resolverConn, err = grpc.NewClient(target.Endpoint(), dialOpts...)
 	if err != nil {
 		return nil, err
@@ -64,19 +68,18 @@ var _ resolver.Resolver = (*Resolver)(nil)
 func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	slog.Info("resolving now")
 	client := api.NewKVClient(r.resolverConn)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	res, err := client.GetServers(ctx, &emptypb.Empty{})
 	if err != nil {
 		slog.Error("failed to resolve server", "err", err)
 		return
 	}
 	var addrs []resolver.Address
-	leaderExists := false
 	for _, server := range res.Servers {
-		if server.IsLeader {
-			leaderExists = true
-		}
+		slog.Info("got server", "server", server)
 		addrs = append(addrs, resolver.Address{
 			Addr: server.RpcAddr,
 			Attributes: attributes.New(
@@ -84,9 +87,6 @@ func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 				server.IsLeader,
 			),
 		})
-	}
-	if !leaderExists {
-		
 	}
 	r.clientConn.UpdateState(resolver.State{
 		Addresses:     addrs,
