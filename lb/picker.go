@@ -11,9 +11,9 @@ import (
 type Builder struct{}
 
 func init() {
-	balancer.Register(
-		base.NewBalancerBuilder(Name, &Builder{}, base.Config{}),
-	)
+	// balancer.Register(
+	// 	base.NewBalancerBuilder(Name, &Builder{}, base.Config{}),
+	// )
 }
 
 var _ base.PickerBuilder = (*Builder)(nil)

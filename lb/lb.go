@@ -25,8 +25,8 @@ type Resolver struct {
 }
 
 func init() {
-	resolver.Register(&Resolver{})
-	slog.Info("registered mokv resolver")
+	// resolver.Register(&Resolver{})
+	// slog.Info("registered mokv resolver")
 }
 
 var _ resolver.Builder = (*Resolver)(nil)

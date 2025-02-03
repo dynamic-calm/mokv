@@ -1,9 +1,11 @@
 package runner_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path"
 	"testing"
@@ -11,10 +13,10 @@ import (
 
 	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/config"
-	"github.com/mateopresacastro/mokv/lb"
 	"github.com/mateopresacastro/mokv/runner"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func TestRunE2E(t *testing.T) {
@@ -63,11 +65,11 @@ func TestRunE2E(t *testing.T) {
 		NodeName:        hostname,
 		BindAddr:        "127.0.0.1:8401",
 		RPCPort:         8400,
+		MetricsPort:     4000,
 		Bootstrap:       true,
 		ACLModelFile:    config.ACLModelFile,
 		ACLPolicyFile:   config.ACLPolicyFile,
 		ServerTLSConfig: serverTLSConfig,
-		MetricsPort:     4000,
 		PeerTLSConfig:   peerTLSConfig,
 	}
 
@@ -91,9 +93,9 @@ func TestRunE2E(t *testing.T) {
 
 	// Setup client connection
 	clientCreds := credentials.NewTLS(clientTLSConfig)
-	rpcAddr := "127.0.0.1"
+	rpcAddr := "127.0.0.1:8400"
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("%s:///%s", lb.Name, rpcAddr),
+		rpcAddr,
 		grpc.WithTransportCredentials(clientCreds),
 	)
 	if err != nil {
@@ -103,53 +105,40 @@ func TestRunE2E(t *testing.T) {
 
 	// Create client and run tests
 	slog.Info("creating client")
-	_ = api.NewKVClient(conn)
+	client := api.NewKVClient(conn)
 
 	// Test Set operation
-	// value := []byte("test")
-	// _, err = client.Set(ctx, &api.SetRequest{Key: "test", Value: value})
-	// if err != nil {
-	// 	t.Fatalf("failed to set: %s", err)
-	// }
+	value := []byte("test")
+	_, err = client.Set(ctx, &api.SetRequest{Key: "test", Value: value})
+	if err != nil {
+		t.Fatalf("failed to set: %s", err)
+	}
 
-	// // Test Get operation
-	// resp, err := client.Get(ctx, &api.GetRequest{Key: "test"})
-	// if err != nil {
-	// 	t.Fatalf("failed to get: %s", err)
-	// }
-	// if !bytes.Equal(resp.Value, value) {
-	// 	t.Fatalf("got wrong value back: got %v, want %v", resp.Value, value)
-	// }
+	// Test Get operation
+	resp, err := client.Get(ctx, &api.GetRequest{Key: "test"})
+	if err != nil {
+		t.Fatalf("failed to get: %s", err)
+	}
+	if !bytes.Equal(resp.Value, value) {
+		t.Fatalf("got wrong value back: got %v, want %v", resp.Value, value)
+	}
 
-	// // Test GetServers operation
-	// getServersRes, err := client.GetServers(ctx, &emptypb.Empty{})
-	// if err != nil {
-	// 	t.Fatalf("failed to get servers: %s", err)
-	// }
-	// if len(getServersRes.Servers) < 1 {
-	// 	t.Fatal("we must have at least one server")
-	// }
+	// Test GetServers operation
+	getServersRes, err := client.GetServers(ctx, &emptypb.Empty{})
+	if err != nil {
+		t.Fatalf("failed to get servers: %s", err)
+	}
+	if len(getServersRes.Servers) < 1 {
+		t.Fatal("we must have at least one server")
+	}
 
-	// // Test metrics endpoint
-	// metricsResp, err := http.Get("http://localhost:4000/metrics")
-	// if err != nil {
-	// 	t.Fatalf("failed to get metrics: %s", err)
-	// }
-	// defer metricsResp.Body.Close()
-	// if metricsResp.StatusCode != http.StatusOK {
-	// 	t.Fatalf("metrics endpoint returned %d", metricsResp.StatusCode)
-	// }
-
-	// // Initiate graceful shutdown
-	// cancel()
-
-	// // Wait for runner to shutdown gracefully
-	// select {
-	// case err := <-runnerErr:
-	// 	if err != nil && err != context.Canceled {
-	// 		t.Errorf("runner failed to shutdown gracefully: %v", err)
-	// 	}
-	// case <-time.After(5 * time.Second):
-	// 	t.Error("runner failed to shutdown within timeout")
-	// }
+	// Test metrics endpoint
+	metricsResp, err := http.Get("http://localhost:4000/metrics")
+	if err != nil {
+		t.Fatalf("failed to get metrics: %s", err)
+	}
+	defer metricsResp.Body.Close()
+	if metricsResp.StatusCode != http.StatusOK {
+		t.Fatalf("metrics endpoint returned %d", metricsResp.StatusCode)
+	}
 }
