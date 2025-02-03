@@ -3,7 +3,6 @@ package discovery
 import (
 	"log/slog"
 	"net"
-	"os"
 
 	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/serf/serf"
@@ -49,6 +48,7 @@ func (m *Membership) setupSerf() error {
 	mlConfig := memberlist.DefaultLocalConfig()
 	mlConfig.BindAddr = addr.IP.String()
 	mlConfig.BindPort = addr.Port
+	mlConfig.AdvertisePort = addr.Port
 	config.MemberlistConfig = mlConfig
 
 	m.events = make(chan serf.Event)
@@ -98,12 +98,6 @@ func (m *Membership) eventHandler() {
 }
 
 func (m *Membership) handleJoin(member serf.Member) {
-	// Skip if we're not running on port 3000 (not the bootstrap node)
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "3000"
-	}
-
 	slog.Info("handling join event",
 		"member_name", member.Name,
 		"member_addr", member.Addr.String(),

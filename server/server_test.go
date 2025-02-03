@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	status "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func fileExists(path string) bool {
@@ -171,7 +172,7 @@ func TestStream(t *testing.T) {
 		}
 	}
 
-	stream, err := client.List(ctx, &api.Empty{})
+	stream, err := client.List(ctx, &emptypb.Empty{})
 	if err != nil {
 		t.Fatalf("failed to start list stream: %v", err)
 	}
@@ -270,7 +271,7 @@ func TestListErrors(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		stream, err := client.List(ctx, &api.Empty{})
+		stream, err := client.List(ctx, &emptypb.Empty{})
 		if err != nil {
 			t.Fatalf("failed to start stream: %v", err)
 		}
@@ -286,7 +287,7 @@ func TestListErrors(t *testing.T) {
 	})
 
 	t.Run("server shutdown", func(t *testing.T) {
-		stream, err := client.List(context.Background(), &api.Empty{})
+		stream, err := client.List(context.Background(), &emptypb.Empty{})
 		if err != nil {
 			t.Fatalf("failed to start stream: %v", err)
 		}
@@ -478,7 +479,7 @@ func TestAuthorization(t *testing.T) {
 	})
 
 	t.Run("nobody cannot list", func(t *testing.T) {
-		stream, err := client.List(ctx, &api.Empty{})
+		stream, err := client.List(ctx, &emptypb.Empty{})
 		if err != nil {
 			if status.Code(err) != codes.PermissionDenied {
 				t.Fatalf("expected permission denied but got: %v", err)

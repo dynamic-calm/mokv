@@ -2,68 +2,83 @@ package lb
 
 import (
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
 )
 
-type Picker struct {
-	mu        sync.RWMutex
-	leader    balancer.SubConn
-	followers []balancer.SubConn
-	current   uint64
-}
-
-var _ base.PickerBuilder = (*Picker)(nil)
+type Builder struct{}
 
 func init() {
 	balancer.Register(
-		base.NewBalancerBuilder(Name, &Picker{}, base.Config{}),
+		base.NewBalancerBuilder(Name, &Builder{}, base.Config{}),
 	)
 }
 
-func (p *Picker) Build(info base.PickerBuildInfo) balancer.Picker {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+var _ base.PickerBuilder = (*Builder)(nil)
+
+func (b *Builder) Build(info base.PickerBuildInfo) balancer.Picker {
+	var leader balancer.SubConn
 	var followers []balancer.SubConn
+
 	for sc, scInfo := range info.ReadySCs {
 		isLeader := scInfo.Address.Attributes.Value("is_leader").(bool)
 		if isLeader {
-			p.leader = sc
+			leader = sc
 			continue
 		}
 		followers = append(followers, sc)
 	}
 
-	p.followers = followers
-	return p
+	return &Picker{
+		leader:    leader,
+		followers: followers,
+	}
+}
+
+type Picker struct {
+	leader    balancer.SubConn
+	followers []balancer.SubConn
+	current   uint64
 }
 
 var _ balancer.Picker = (*Picker)(nil)
 
 func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
 	var result balancer.PickResult
-	if strings.Contains(info.FullMethodName, "Produce") ||
-		len(p.followers) == 0 {
-		result.SubConn = p.leader
-	} else if strings.Contains(info.FullMethodName, "Consume") {
-		result.SubConn = p.nextFollower()
-	}
-
-	if result.SubConn == nil {
+	if p.leader == nil && len(p.followers) == 0 {
 		return result, balancer.ErrNoSubConnAvailable
 	}
-	return result, nil
+
+	if strings.Contains(info.FullMethodName, "Set") ||
+		strings.Contains(info.FullMethodName, "Delete") {
+		if p.leader == nil {
+			return result, balancer.ErrNoSubConnAvailable
+		}
+		result.SubConn = p.leader
+		return result, nil
+	}
+
+	if len(p.followers) > 0 {
+		result.SubConn = p.nextFollower()
+		return result, nil
+	}
+
+	if p.leader != nil {
+		result.SubConn = p.leader
+		return result, nil
+	}
+
+	return result, balancer.ErrNoSubConnAvailable
 }
 
-// Round Robin algorithm
 func (p *Picker) nextFollower() balancer.SubConn {
+	numFollowers := len(p.followers)
+	if numFollowers == 0 {
+		return nil
+	}
 	cur := atomic.AddUint64(&p.current, uint64(1))
-	len := uint64(len(p.followers))
-	idx := int(cur & len)
+	idx := int(cur % uint64(numFollowers))
 	return p.followers[idx]
 }
