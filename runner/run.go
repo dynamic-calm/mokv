@@ -75,15 +75,14 @@ func (r *Runner) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case err := <-mErrc:
-			return err // TODO: think about what to do when metrics server crashes.
-		case err := <-grpcErrc:
-			return err
-		}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-mErrc:
+		return err // TODO: think about what to do when metrics server crashes.
+	case err := <-grpcErrc:
+		return err
 	}
 }
 
@@ -178,41 +177,31 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 	grpcLn := mux.Match(cmux.Any())
 
 	errc := make(chan error, 1)
-	srvErrc := make(chan error, 1)
-	muxErrc := make(chan error, 1)
 
 	go func() {
 		defer close(errc)
 		go func() {
-			defer close(srvErrc)
 			slog.Info("gRPC server listening...", "addr", listener.Addr())
 			if err := server.Serve(grpcLn); err != nil {
-				srvErrc <- fmt.Errorf("gRPC server error: %w", err)
+				errc <- fmt.Errorf("gRPC server error: %w", err)
 			}
 		}()
 
 		go func() {
-			defer close(muxErrc)
 			slog.Info("multiplexer listening...")
 			if err := mux.Serve(); err != nil {
-				muxErrc <- fmt.Errorf("multiplexer server error: %w", err)
+				errc <- fmt.Errorf("multiplexer server error: %w", err)
 			}
 		}()
 
-		select {
-		case err := <-srvErrc:
-			errc <- err
-		case err := <-muxErrc:
-			errc <- err
-		case <-ctx.Done():
-			// The context is done when user stops the process or there is an error
-			// on any of these error channels. The context gets cancelled on the defer
-			// of the Run function.
-			server.GracefulStop()
-			listener.Close()
-			grpcLn.Close()
-			mux.Close()
-		}
+		<-ctx.Done()
+		// The context is done when user stops the process or there is an error
+		// on the errc channel. The context gets cancelled on the defer
+		// of the Run function.
+		server.GracefulStop()
+		listener.Close()
+		grpcLn.Close()
+		mux.Close()
 	}()
 
 	return errc, nil
