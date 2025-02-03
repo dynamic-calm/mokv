@@ -78,7 +78,7 @@ func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetRespon
 	if err != nil {
 		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err() // TODO improve error handling. Do boundary layers.
 	}
-	return &api.GetResponse{Value: value}, nil
+	return &api.GetResponse{Value: value, Key: req.Key}, nil
 }
 
 func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetResponse, error) {
