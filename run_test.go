@@ -1,4 +1,4 @@
-package runner_test
+package mokv
 
 import (
 	"bytes"
@@ -15,7 +15,6 @@ import (
 	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/config"
 	"github.com/mateopresacastro/mokv/lb"
-	"github.com/mateopresacastro/mokv/runner"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -62,7 +61,7 @@ func TestRunE2E(t *testing.T) {
 	}
 
 	// Create runner config
-	cfg := &runner.Config{
+	cfg := &RunnerConfig{
 		DataDir:         testDir,
 		NodeName:        hostname,
 		BindAddr:        "127.0.0.1:8401",
@@ -76,7 +75,7 @@ func TestRunE2E(t *testing.T) {
 	}
 
 	// Create and start runner
-	r := runner.New(cfg, os.Getenv)
+	r := NewRunner(cfg, os.Getenv)
 	go func() {
 		r.Run(ctx)
 	}()

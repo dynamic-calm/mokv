@@ -1,4 +1,4 @@
-package runner
+package mokv
 
 import (
 	"bytes"
@@ -30,7 +30,7 @@ import (
 	"google.golang.org/grpc/stats/opentelemetry"
 )
 
-type Config struct {
+type RunnerConfig struct {
 	DataDir         string
 	NodeName        string
 	BindAddr        string
@@ -47,13 +47,13 @@ type Config struct {
 type GetEnv func(string) string
 
 type Runner struct {
-	cfg           *Config
+	cfg           *RunnerConfig
 	getEnv        GetEnv
 	dkv           kv.KV
 	meterProvider *metric.MeterProvider
 }
 
-func New(cfg *Config, getEnv GetEnv) *Runner {
+func NewRunner(cfg *RunnerConfig, getEnv GetEnv) *Runner {
 	return &Runner{cfg: cfg, getEnv: getEnv}
 }
 
