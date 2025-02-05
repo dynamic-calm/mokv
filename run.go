@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/mateopresacastro/mokv/auth"
 	"github.com/mateopresacastro/mokv/config"
 	"github.com/mateopresacastro/mokv/kv"
 	"github.com/mateopresacastro/mokv/kv/store"
@@ -170,7 +169,7 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 
 	r.dkv = dkv
 
-	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
+	authorizer := NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
 	server := NewServer(dkv, authorizer, serverOpts...)
 	grpcLn := mux.Match(cmux.Any())
 
