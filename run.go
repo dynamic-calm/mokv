@@ -20,7 +20,6 @@ import (
 	"github.com/mateopresacastro/mokv/discovery"
 	"github.com/mateopresacastro/mokv/kv"
 	"github.com/mateopresacastro/mokv/kv/store"
-	"github.com/mateopresacastro/mokv/server"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/otel/exporters/prometheus"
@@ -173,7 +172,7 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 	r.dkv = dkv
 
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := server.New(dkv, authorizer, serverOpts...)
+	server := NewServer(dkv, authorizer, serverOpts...)
 	grpcLn := mux.Match(cmux.Any())
 
 	errc := make(chan error, 1)

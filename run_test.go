@@ -1,4 +1,4 @@
-package mokv
+package mokv_test
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mateopresacastro/mokv"
 	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/config"
 	"github.com/mateopresacastro/mokv/lb"
@@ -61,7 +62,7 @@ func TestRunE2E(t *testing.T) {
 	}
 
 	// Create runner config
-	cfg := &RunnerConfig{
+	cfg := &mokv.RunnerConfig{
 		DataDir:         testDir,
 		NodeName:        hostname,
 		BindAddr:        "127.0.0.1:8401",
@@ -75,7 +76,7 @@ func TestRunE2E(t *testing.T) {
 	}
 
 	// Create and start runner
-	r := NewRunner(cfg, os.Getenv)
+	r := mokv.NewRunner(cfg, os.Getenv)
 	go func() {
 		r.Run(ctx)
 	}()

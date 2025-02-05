@@ -1,4 +1,4 @@
-package server
+package mokv
 
 import (
 	"context"
@@ -48,7 +48,7 @@ func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
 	return nil, fmt.Errorf("kv store does not support getting servers")
 }
 
-func New(KV kv.KV, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
+func NewServer(KV kv.KV, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
 	// Middleware for streaming and unary requests
 	opts = append(opts, grpc.StreamInterceptor(
 		grpc_middleware.ChainStreamServer(
