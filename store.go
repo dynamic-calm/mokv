@@ -1,4 +1,4 @@
-package store
+package mokv
 
 import (
 	"errors"
@@ -17,7 +17,7 @@ type store struct {
 	mu sync.RWMutex
 }
 
-func New() Store {
+func NewStore() Store {
 	return &store{db: map[string][]byte{}}
 }
 

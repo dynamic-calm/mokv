@@ -1,4 +1,4 @@
-package auth
+package mokv
 
 import (
 	"fmt"
@@ -8,20 +8,20 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type Authorizer struct {
+type Enforcer struct {
 	enforcer *casbin.Enforcer
 }
 
-func New(model, policy string) *Authorizer {
+func NewAuthorizer(model, policy string) *Enforcer {
 	enforcer, err := casbin.NewEnforcer(model, policy)
 	if err != nil {
 		panic(err)
 	}
 
-	return &Authorizer{enforcer: enforcer}
+	return &Enforcer{enforcer: enforcer}
 }
 
-func (a *Authorizer) Authorize(subject, object, action string) error {
+func (a *Enforcer) Authorize(subject, object, action string) error {
 	ok, err := a.enforcer.Enforce(subject, object, action)
 	if err != nil {
 		return status.Errorf(codes.Internal, "authorization error: %v", err)

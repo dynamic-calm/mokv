@@ -6,8 +6,8 @@ import (
 	"os"
 	"path"
 
+	"github.com/mateopresacastro/mokv"
 	"github.com/mateopresacastro/mokv/config"
-	"github.com/mateopresacastro/mokv/runner"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -17,7 +17,7 @@ type cli struct {
 }
 
 type Cfg struct {
-	*runner.Config
+	*mokv.RunnerConfig
 	ServerTLSConfig config.TLSConfig
 	PeerTLSConfig   config.TLSConfig
 }
@@ -64,10 +64,10 @@ func setupFlags(cmd *cobra.Command) error {
 	return viper.BindPFlags(cmd.Flags())
 }
 
-func (c *cli) setupConfig(cmd *cobra.Command, args []string) error {
+func (cli *cli) setupConfig(cmd *cobra.Command, args []string) error {
 	var err error
-	if c.cfg.Config == nil {
-		c.cfg.Config = &runner.Config{}
+	if cli.cfg.RunnerConfig == nil {
+		cli.cfg.RunnerConfig = &mokv.RunnerConfig{}
 	}
 
 	configFile, err := cmd.Flags().GetString("config-file")
@@ -81,35 +81,35 @@ func (c *cli) setupConfig(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	c.cfg.DataDir = viper.GetString("data-dir")
-	c.cfg.NodeName = viper.GetString("node-name")
-	c.cfg.BindAddr = viper.GetString("bind-addr")
-	c.cfg.RPCPort = viper.GetInt("rpc-port")
-	c.cfg.StartJoinAddrs = viper.GetStringSlice("start-join-addrs")
-	c.cfg.Bootstrap = viper.GetBool("bootstrap")
-	c.cfg.ACLModelFile = viper.GetString("acl-mode-file")
-	c.cfg.ACLPolicyFile = viper.GetString("acl-policy-file")
-	c.cfg.ServerTLSConfig.CertFile = viper.GetString("server-tls-cert-file")
-	c.cfg.ServerTLSConfig.KeyFile = viper.GetString("server-tls-key-file")
-	c.cfg.ServerTLSConfig.CAFile = viper.GetString("server-tls-ca-file")
-	c.cfg.ServerTLSConfig.ServerAddress = viper.GetString("node-name")
-	c.cfg.PeerTLSConfig.CertFile = viper.GetString("peer-tls-cert-file")
-	c.cfg.PeerTLSConfig.KeyFile = viper.GetString("peer-tls-key-file")
-	c.cfg.PeerTLSConfig.CAFile = viper.GetString("peer-tls-ca-file")
-	c.cfg.PeerTLSConfig.ServerAddress = viper.GetString("node-name")
-	c.cfg.MetricsPort = viper.GetInt("metrics-port")
+	cli.cfg.DataDir = viper.GetString("data-dir")
+	cli.cfg.NodeName = viper.GetString("node-name")
+	cli.cfg.BindAddr = viper.GetString("bind-addr")
+	cli.cfg.RPCPort = viper.GetInt("rpc-port")
+	cli.cfg.StartJoinAddrs = viper.GetStringSlice("start-join-addrs")
+	cli.cfg.Bootstrap = viper.GetBool("bootstrap")
+	cli.cfg.ACLModelFile = viper.GetString("acl-mode-file")
+	cli.cfg.ACLPolicyFile = viper.GetString("acl-policy-file")
+	cli.cfg.ServerTLSConfig.CertFile = viper.GetString("server-tls-cert-file")
+	cli.cfg.ServerTLSConfig.KeyFile = viper.GetString("server-tls-key-file")
+	cli.cfg.ServerTLSConfig.CAFile = viper.GetString("server-tls-ca-file")
+	cli.cfg.ServerTLSConfig.ServerAddress = viper.GetString("node-name")
+	cli.cfg.PeerTLSConfig.CertFile = viper.GetString("peer-tls-cert-file")
+	cli.cfg.PeerTLSConfig.KeyFile = viper.GetString("peer-tls-key-file")
+	cli.cfg.PeerTLSConfig.CAFile = viper.GetString("peer-tls-ca-file")
+	cli.cfg.PeerTLSConfig.ServerAddress = viper.GetString("node-name")
+	cli.cfg.MetricsPort = viper.GetInt("metrics-port")
 
-	if c.cfg.ServerTLSConfig.CertFile != "" && c.cfg.ServerTLSConfig.KeyFile != "" {
-		c.cfg.ServerTLSConfig.Server = true
-		c.cfg.Config.ServerTLSConfig, err = config.SetupTLSConfig(c.cfg.ServerTLSConfig)
+	if cli.cfg.ServerTLSConfig.CertFile != "" && cli.cfg.ServerTLSConfig.KeyFile != "" {
+		cli.cfg.ServerTLSConfig.Server = true
+		cli.cfg.RunnerConfig.ServerTLSConfig, err = config.SetupTLSConfig(cli.cfg.ServerTLSConfig)
 		if err != nil {
 			return err
 		}
 	}
 
-	if c.cfg.PeerTLSConfig.CertFile != "" && c.cfg.PeerTLSConfig.KeyFile != "" {
-		c.cfg.Config.PeerTLSConfig, err = config.SetupTLSConfig(
-			c.cfg.PeerTLSConfig,
+	if cli.cfg.PeerTLSConfig.CertFile != "" && cli.cfg.PeerTLSConfig.KeyFile != "" {
+		cli.cfg.RunnerConfig.PeerTLSConfig, err = config.SetupTLSConfig(
+			cli.cfg.PeerTLSConfig,
 		)
 		if err != nil {
 			return err
@@ -119,9 +119,9 @@ func (c *cli) setupConfig(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func (c *cli) run(cmd *cobra.Command, args []string) error {
+func (cli *cli) run(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	r := runner.New(c.cfg.Config, os.Getenv)
+	r := mokv.NewRunner(cli.cfg.RunnerConfig, os.Getenv)
 	if err := r.Run(ctx); err != nil {
 		return err
 	}

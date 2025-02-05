@@ -1,4 +1,4 @@
-package server
+package mokv
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/mateopresacastro/mokv/api"
-	"github.com/mateopresacastro/mokv/kv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -18,9 +17,9 @@ import (
 
 type kvServer struct {
 	api.KVServer
-	KV           kv.KV
+	KV           KVI
 	authorizer   Authorizer
-	serverGetter kv.ServerProvider
+	serverGetter ServerProvider
 }
 
 const (
@@ -33,22 +32,22 @@ type Authorizer interface {
 	Authorize(subject, object, action string) error
 }
 
-func NewServerGetter(kv kv.KV) kv.ServerProvider {
+func NewServerGetter(kv KVI) ServerProvider {
 	return &kvServerGetter{kv: kv}
 }
 
 type kvServerGetter struct {
-	kv kv.KV
+	kv KVI
 }
 
 func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
-	if provider, ok := kg.kv.(kv.ServerProvider); ok {
+	if provider, ok := kg.kv.(ServerProvider); ok {
 		return provider.GetServers()
 	}
 	return nil, fmt.Errorf("kv store does not support getting servers")
 }
 
-func New(KV kv.KV, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
+func NewServer(KV KVI, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
 	// Middleware for streaming and unary requests
 	opts = append(opts, grpc.StreamInterceptor(
 		grpc_middleware.ChainStreamServer(
