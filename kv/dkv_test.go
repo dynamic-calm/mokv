@@ -9,7 +9,6 @@ import (
 
 	"github.com/mateopresacastro/mokv/config"
 	"github.com/mateopresacastro/mokv/kv"
-	"github.com/mateopresacastro/mokv/kv/store"
 	"github.com/soheilhy/cmux"
 )
 
@@ -42,7 +41,7 @@ func TestDistributedKVReplication(t *testing.T) {
 		t.Fatalf("failed to setup peer TLS: %v", err)
 	}
 
-	store1 := store.New()
+	store1 := kv.NewStore()
 	ln1, err := net.Listen("tcp", "127.0.0.1:3001")
 	if err != nil {
 		t.Fatalf("failed to create listener for node 1: %v", err)
@@ -75,7 +74,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	}()
 
 	// Setup second node
-	store2 := store.New()
+	store2 := kv.NewStore()
 	ln2, err := net.Listen("tcp", "127.0.0.1:3002")
 	if err != nil {
 		t.Fatalf("failed to create listener for node 2: %v", err)
@@ -166,7 +165,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	os.MkdirAll(dir3, 0755)
 	defer os.RemoveAll(dir3)
 
-	store3 := store.New()
+	store3 := kv.NewStore()
 	ln3, err := net.Listen("tcp", "127.0.0.1:3003")
 	if err != nil {
 		t.Fatalf("failed to create listener for node 3: %v", err)

@@ -1,14 +1,11 @@
 package kv
 
-import "github.com/mateopresacastro/mokv/kv/store"
-
-
 type kv struct {
-	store store.Store
+	store Store
 }
 
 // These are all shallow methods since I haven't developed the persistance layer for now.
-func New(store store.Store) KV {
+func New(store Store) KV {
 	return &kv{store: store}
 }
 

@@ -16,7 +16,6 @@ import (
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/mateopresacastro/mokv/api"
-	"github.com/mateopresacastro/mokv/kv/store"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -56,7 +55,7 @@ type DistributedKV struct {
 	raft *raft.Raft
 }
 
-func NewDistributedKV(store store.Store, cfg *Config) (*DistributedKV, error) {
+func NewDistributedKV(store Store, cfg *Config) (*DistributedKV, error) {
 	kv := New(store)
 	dkv := &DistributedKV{cfg: cfg, kv: kv}
 	if err := dkv.setupRaft(dkv.cfg.DataDir); err != nil {

@@ -14,7 +14,7 @@ import (
 	"github.com/mateopresacastro/mokv"
 	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/config"
-	"github.com/mateopresacastro/mokv/kv/store"
+	"github.com/mateopresacastro/mokv/kv"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -33,7 +33,7 @@ func TestAPI(t *testing.T) {
 	}
 	defer listener.Close()
 
-	store := store.New()
+	store := kv.NewStore()
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
@@ -115,7 +115,7 @@ func TestStream(t *testing.T) {
 	}
 	defer listener.Close()
 
-	store := store.New()
+	store := kv.NewStore()
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
@@ -215,7 +215,7 @@ func TestListErrors(t *testing.T) {
 	}
 	defer listener.Close()
 
-	store := store.New()
+	store := kv.NewStore()
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
@@ -317,7 +317,7 @@ func TestConcurrency(t *testing.T) {
 	}
 	defer listener.Close()
 
-	store := store.New()
+	store := kv.NewStore()
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
@@ -406,7 +406,7 @@ func TestAuthorization(t *testing.T) {
 	}
 	defer listener.Close()
 
-	store := store.New()
+	store := kv.NewStore()
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
