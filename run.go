@@ -16,7 +16,6 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/mateopresacastro/mokv/config"
-	"github.com/mateopresacastro/mokv/kv"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/otel/exporters/prometheus"
@@ -45,7 +44,7 @@ type GetEnv func(string) string
 type Runner struct {
 	cfg           *RunnerConfig
 	getEnv        GetEnv
-	dkv           kv.KV
+	kv            KV
 	meterProvider *metric.MeterProvider
 }
 
@@ -137,7 +136,7 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 	}
 
 	mux := cmux.New(listener)
-	kvCFG := &kv.Config{DataDir: r.cfg.DataDir}
+	kvCFG := &KVConfig{DataDir: r.cfg.DataDir}
 	kvCFG.Raft.BindAddr = r.cfg.BindAddr
 	kvCFG.Raft.RPCPort = port
 	kvCFG.Raft.LocalID = raft.ServerID(r.cfg.NodeName)
@@ -151,25 +150,25 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 		if _, err := reader.Read(b); err != nil {
 			return false
 		}
-		return bytes.Compare(b, []byte{byte(kv.RaftRPC)}) == 0
+		return bytes.Compare(b, []byte{byte(RaftRPC)}) == 0
 	})
 
-	kvCFG.Raft.StreamLayer = *kv.NewStreamLayer(
+	kvCFG.Raft.StreamLayer = *NewStreamLayer(
 		raftLn,
 		r.cfg.ServerTLSConfig,
 		r.cfg.PeerTLSConfig,
 	)
 
-	store := kv.NewStore()
-	dkv, err := kv.NewDistributedKV(store, kvCFG)
+	store := NewStore()
+	kv, err := NewDistributedKV(store, kvCFG)
 	if err != nil {
 		return nil, err
 	}
 
-	r.dkv = dkv
+	r.kv = kv
 
 	authorizer := NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
-	server := NewServer(dkv, authorizer, serverOpts...)
+	server := NewServer(kv, authorizer, serverOpts...)
 	grpcLn := mux.Match(cmux.Any())
 
 	errc := make(chan error, 1)
@@ -211,12 +210,12 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 }
 
 func (r *Runner) setupMemership(ctx context.Context) error {
-	distributedKV, ok := r.dkv.(*kv.DistributedKV)
+	distributekv, ok := r.kv.(*DistributedKV)
 	if !ok {
-		return fmt.Errorf("failed to convert kv to *kv.DistributedKV")
+		return fmt.Errorf("failed to convert kv to *kv.Distributekv")
 	}
 	rpcAddr := fmt.Sprintf("127.0.0.1:%d", r.cfg.RPCPort)
-	membership, err := NewMembership(distributedKV, MembershipConfig{
+	membership, err := NewMembership(distributekv, MembershipConfig{
 		NodeName: r.cfg.NodeName,
 		BindAddr: r.cfg.BindAddr,
 		Tags: map[string]string{

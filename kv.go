@@ -1,4 +1,4 @@
-package kv
+package mokv
 
 import (
 	"bytes"
@@ -38,7 +38,7 @@ const (
 	lenWidth                      = 8
 )
 
-type Config struct {
+type KVConfig struct {
 	Raft struct {
 		raft.Config
 		StreamLayer
@@ -50,12 +50,12 @@ type Config struct {
 }
 
 type DistributedKV struct {
-	cfg   *Config
+	cfg   *KVConfig
 	store Store
 	raft  *raft.Raft
 }
 
-func NewDistributedKV(store Store, cfg *Config) (*DistributedKV, error) {
+func NewDistributedKV(store Store, cfg *KVConfig) (*DistributedKV, error) {
 	dkv := &DistributedKV{cfg: cfg, store: store}
 	if err := dkv.setupRaft(dkv.cfg.DataDir); err != nil {
 		slog.Error("failed setting up raft", "err", err)
