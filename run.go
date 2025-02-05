@@ -17,7 +17,6 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/mateopresacastro/mokv/auth"
 	"github.com/mateopresacastro/mokv/config"
-	"github.com/mateopresacastro/mokv/discovery"
 	"github.com/mateopresacastro/mokv/kv"
 	"github.com/mateopresacastro/mokv/kv/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -219,7 +218,7 @@ func (r *Runner) setupMemership(ctx context.Context) error {
 		return fmt.Errorf("failed to convert kv to *kv.DistributedKV")
 	}
 	rpcAddr := fmt.Sprintf("127.0.0.1:%d", r.cfg.RPCPort)
-	membership, err := discovery.New(distributedKV, discovery.Config{
+	membership, err := NewMembership(distributedKV, MembershipConfig{
 		NodeName: r.cfg.NodeName,
 		BindAddr: r.cfg.BindAddr,
 		Tags: map[string]string{

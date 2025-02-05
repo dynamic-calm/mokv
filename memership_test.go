@@ -1,9 +1,11 @@
-package discovery
+package mokv_test
 
 import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/mateopresacastro/mokv"
 )
 
 type testHandler struct {
@@ -28,13 +30,13 @@ func (h *testHandler) Leave(id string) error {
 	return nil
 }
 
-func setupMember(t *testing.T, members []*Membership, port int) ([]*Membership, *testHandler) {
+func setupMember(t *testing.T, members []*mokv.Membership, port int) ([]*mokv.Membership, *testHandler) {
 	id := len(members)
 	addr := fmt.Sprintf("%s:%d", "127.0.0.1", port)
 	tags := map[string]string{
 		"rpc_addr": addr,
 	}
-	c := Config{
+	c := mokv.MembershipConfig{
 		NodeName: fmt.Sprintf("%d", id),
 		BindAddr: addr,
 		Tags:     tags,
@@ -49,7 +51,7 @@ func setupMember(t *testing.T, members []*Membership, port int) ([]*Membership, 
 		c.StartJoinAddrs = []string{members[0].BindAddr}
 	}
 
-	m, err := New(h, c)
+	m, err := mokv.NewMembership(h, c)
 	if err != nil {
 		t.Fatalf("error creating discovery: %v", err)
 	}

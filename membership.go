@@ -1,4 +1,4 @@
-package discovery
+package mokv
 
 import (
 	"log/slog"
@@ -13,7 +13,7 @@ type Handler interface {
 	Leave(name string) error
 }
 
-type Config struct {
+type MembershipConfig struct {
 	NodeName       string
 	BindAddr       string
 	Tags           map[string]string
@@ -21,14 +21,14 @@ type Config struct {
 }
 
 type Membership struct {
-	Config
+	MembershipConfig
 	serf    *serf.Serf
 	handler Handler
 	events  chan serf.Event
 }
 
-func New(h Handler, cfg Config) (*Membership, error) {
-	m := &Membership{handler: h, Config: cfg}
+func NewMembership(h Handler, cfg MembershipConfig) (*Membership, error) {
+	m := &Membership{handler: h, MembershipConfig: cfg}
 	if err := m.setupSerf(); err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func (m *Membership) setupSerf() error {
 	m.events = make(chan serf.Event)
 	config.EventCh = m.events
 	config.Tags = m.Tags
-	config.NodeName = m.Config.NodeName
+	config.NodeName = m.MembershipConfig.NodeName
 
 	m.serf, err = serf.Create(config)
 	if err != nil {
