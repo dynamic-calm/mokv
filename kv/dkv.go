@@ -50,14 +50,13 @@ type Config struct {
 }
 
 type DistributedKV struct {
-	cfg  *Config
-	kv   KV
-	raft *raft.Raft
+	cfg   *Config
+	store Store
+	raft  *raft.Raft
 }
 
 func NewDistributedKV(store Store, cfg *Config) (*DistributedKV, error) {
-	kv := New(store)
-	dkv := &DistributedKV{cfg: cfg, kv: kv}
+	dkv := &DistributedKV{cfg: cfg, store: store}
 	if err := dkv.setupRaft(dkv.cfg.DataDir); err != nil {
 		slog.Error("failed setting up raft", "err", err)
 		return nil, err
@@ -66,7 +65,7 @@ func NewDistributedKV(store Store, cfg *Config) (*DistributedKV, error) {
 }
 
 func (dkv *DistributedKV) Set(key string, value []byte) error {
-	err := dkv.kv.Set(key, value)
+	err := dkv.store.Set(key, value)
 	if err != nil {
 		return fmt.Errorf("failed to set key: %s, val: %s from kv: %w", key, string(value), err)
 	}
@@ -79,7 +78,7 @@ func (dkv *DistributedKV) Set(key string, value []byte) error {
 }
 
 func (dkv *DistributedKV) Delete(key string) error {
-	err := dkv.kv.Delete(key)
+	err := dkv.store.Delete(key)
 	if err != nil {
 		return fmt.Errorf("failed to delete key: %s from kv: %w", key, err)
 	}
@@ -92,11 +91,11 @@ func (dkv *DistributedKV) Delete(key string) error {
 }
 
 func (dkv *DistributedKV) Get(key string) ([]byte, error) {
-	return dkv.kv.Get(key)
+	return dkv.store.Get(key)
 }
 
 func (dkv *DistributedKV) List() <-chan []byte {
-	return dkv.kv.List()
+	return dkv.store.List()
 }
 
 func (dkv *DistributedKV) GetServers() ([]*api.Server, error) {
@@ -187,12 +186,7 @@ func (dkv *DistributedKV) WaitForLeader(timeout time.Duration) error {
 }
 
 func (dkv *DistributedKV) setupRaft(dataDir string) error {
-	kv, ok := dkv.kv.(*kv)
-	if !ok {
-		return fmt.Errorf("invalid KV implementation: expected *kv, got %T", dkv.kv)
-	}
-
-	fsm := &fsm{kv: kv}
+	fsm := &fsm{kv: dkv.store}
 
 	raftDir := filepath.Join(dataDir, "raft")
 	if err := os.MkdirAll(raftDir, 0755); err != nil {
@@ -320,7 +314,7 @@ func (dkv *DistributedKV) apply(reqType RequestType, req proto.Message) (any, er
 var _ raft.FSM = (*fsm)(nil)
 
 type fsm struct {
-	kv *kv
+	kv Store
 }
 
 // This will get called on every node in the cluster
