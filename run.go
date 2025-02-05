@@ -44,7 +44,7 @@ type GetEnv func(string) string
 type Runner struct {
 	cfg           *RunnerConfig
 	getEnv        GetEnv
-	kv            KV
+	kv            KVI
 	meterProvider *metric.MeterProvider
 }
 

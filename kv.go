@@ -19,7 +19,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type KV interface {
+type KVI interface {
 	Get(key string) ([]byte, error)
 	Set(key string, value []byte) error
 	Delete(key string) error

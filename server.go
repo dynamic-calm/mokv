@@ -17,7 +17,7 @@ import (
 
 type kvServer struct {
 	api.KVServer
-	KV           KV
+	KV           KVI
 	authorizer   Authorizer
 	serverGetter ServerProvider
 }
@@ -32,12 +32,12 @@ type Authorizer interface {
 	Authorize(subject, object, action string) error
 }
 
-func NewServerGetter(kv KV) ServerProvider {
+func NewServerGetter(kv KVI) ServerProvider {
 	return &kvServerGetter{kv: kv}
 }
 
 type kvServerGetter struct {
-	kv KV
+	kv KVI
 }
 
 func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
@@ -47,7 +47,7 @@ func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
 	return nil, fmt.Errorf("kv store does not support getting servers")
 }
 
-func NewServer(KV KV, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
+func NewServer(KV KVI, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
 	// Middleware for streaming and unary requests
 	opts = append(opts, grpc.StreamInterceptor(
 		grpc_middleware.ChainStreamServer(
