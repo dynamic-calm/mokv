@@ -49,7 +49,6 @@ func (r *Resolver) Build(
 		fmt.Sprintf(`{"loadBalancingConfig":[{"%s":{}}]}`, Name),
 	)
 	var err error
-	slog.Info("creating resolver con", "endpoint", target.Endpoint())
 	r.resolverConn, err = grpc.NewClient(target.Endpoint(), dialOpts...)
 	if err != nil {
 		return nil, err
@@ -68,7 +67,6 @@ var _ resolver.Resolver = (*Resolver)(nil)
 func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	slog.Info("resolving now")
 	client := api.NewKVClient(r.resolverConn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

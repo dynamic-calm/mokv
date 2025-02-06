@@ -160,7 +160,7 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 	)
 
 	store := NewStore()
-	kv, err := NewDistributedKV(store, kvCFG)
+	kv, err := NewKV(store, kvCFG)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +210,7 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 }
 
 func (r *Runner) setupMemership(ctx context.Context) error {
-	distributekv, ok := r.kv.(*DistributedKV)
+	distributekv, ok := r.kv.(*KV)
 	if !ok {
 		return fmt.Errorf("failed to convert kv to *kv.Distributekv")
 	}
