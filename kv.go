@@ -49,14 +49,14 @@ type KVConfig struct {
 	DataDir string
 }
 
-type DistributedKV struct {
+type KV struct {
 	cfg   *KVConfig
 	store Store
 	raft  *raft.Raft
 }
 
-func NewDistributedKV(store Store, cfg *KVConfig) (*DistributedKV, error) {
-	dkv := &DistributedKV{cfg: cfg, store: store}
+func NewKV(store Store, cfg *KVConfig) (*KV, error) {
+	dkv := &KV{cfg: cfg, store: store}
 	if err := dkv.setupRaft(dkv.cfg.DataDir); err != nil {
 		slog.Error("failed setting up raft", "err", err)
 		return nil, err
@@ -64,7 +64,7 @@ func NewDistributedKV(store Store, cfg *KVConfig) (*DistributedKV, error) {
 	return dkv, nil
 }
 
-func (dkv *DistributedKV) Set(key string, value []byte) error {
+func (dkv *KV) Set(key string, value []byte) error {
 	err := dkv.store.Set(key, value)
 	if err != nil {
 		return fmt.Errorf("failed to set key: %s, val: %s from kv: %w", key, string(value), err)
@@ -77,7 +77,7 @@ func (dkv *DistributedKV) Set(key string, value []byte) error {
 	return nil
 }
 
-func (dkv *DistributedKV) Delete(key string) error {
+func (dkv *KV) Delete(key string) error {
 	err := dkv.store.Delete(key)
 	if err != nil {
 		return fmt.Errorf("failed to delete key: %s from kv: %w", key, err)
@@ -90,15 +90,15 @@ func (dkv *DistributedKV) Delete(key string) error {
 	return nil
 }
 
-func (dkv *DistributedKV) Get(key string) ([]byte, error) {
+func (dkv *KV) Get(key string) ([]byte, error) {
 	return dkv.store.Get(key)
 }
 
-func (dkv *DistributedKV) List() <-chan []byte {
+func (dkv *KV) List() <-chan []byte {
 	return dkv.store.List()
 }
 
-func (dkv *DistributedKV) GetServers() ([]*api.Server, error) {
+func (dkv *KV) GetServers() ([]*api.Server, error) {
 	future := dkv.raft.GetConfiguration()
 	if err := future.Error(); err != nil {
 		return nil, fmt.Errorf("failed on get raft configuration future: %w", err)
@@ -114,7 +114,7 @@ func (dkv *DistributedKV) GetServers() ([]*api.Server, error) {
 	return servers, nil
 }
 
-func (dkv *DistributedKV) Join(id, addr string) error {
+func (dkv *KV) Join(id, addr string) error {
 	slog.Info("attempting to join", "id", id, "addr", addr)
 
 	serverID := raft.ServerID(id)
@@ -156,12 +156,12 @@ func (dkv *DistributedKV) Join(id, addr string) error {
 	return nil
 }
 
-func (dkv *DistributedKV) Leave(id string) error {
+func (dkv *KV) Leave(id string) error {
 	removeFuture := dkv.raft.RemoveServer(raft.ServerID(id), 0, 0)
 	return removeFuture.Error()
 }
 
-func (dkv *DistributedKV) Close() error {
+func (dkv *KV) Close() error {
 	f := dkv.raft.Shutdown()
 	if err := f.Error(); err != nil {
 		return err
@@ -169,7 +169,7 @@ func (dkv *DistributedKV) Close() error {
 	return nil
 }
 
-func (dkv *DistributedKV) WaitForLeader(timeout time.Duration) error {
+func (dkv *KV) WaitForLeader(timeout time.Duration) error {
 	timeoutc := time.After(timeout)
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -185,7 +185,7 @@ func (dkv *DistributedKV) WaitForLeader(timeout time.Duration) error {
 	}
 }
 
-func (dkv *DistributedKV) setupRaft(dataDir string) error {
+func (dkv *KV) setupRaft(dataDir string) error {
 	fsm := &fsm{kv: dkv.store}
 
 	raftDir := filepath.Join(dataDir, "raft")
@@ -279,7 +279,7 @@ func (dkv *DistributedKV) setupRaft(dataDir string) error {
 	return nil
 }
 
-func (dkv *DistributedKV) apply(reqType RequestType, req proto.Message) (any, error) {
+func (dkv *KV) apply(reqType RequestType, req proto.Message) (any, error) {
 	var buf bytes.Buffer
 	// Write the reqType byte to the buffer to differentiate from other requests
 	// later on
