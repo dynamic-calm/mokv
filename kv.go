@@ -56,50 +56,50 @@ type KV struct {
 }
 
 func NewKV(store Store, cfg *KVConfig) (*KV, error) {
-	dkv := &KV{cfg: cfg, store: store}
-	if err := dkv.setupRaft(dkv.cfg.DataDir); err != nil {
+	kv := &KV{cfg: cfg, store: store}
+	if err := kv.setupRaft(kv.cfg.DataDir); err != nil {
 		slog.Error("failed setting up raft", "err", err)
 		return nil, err
 	}
-	return dkv, nil
+	return kv, nil
 }
 
-func (dkv *KV) Set(key string, value []byte) error {
-	err := dkv.store.Set(key, value)
+func (kv *KV) Set(key string, value []byte) error {
+	err := kv.store.Set(key, value)
 	if err != nil {
 		return fmt.Errorf("failed to set key: %s, val: %s from kv: %w", key, string(value), err)
 	}
 	// Replicate Set
-	_, err = dkv.apply(SetRequestType, &api.SetRequest{Key: key, Value: value})
+	_, err = kv.apply(SetRequestType, &api.SetRequest{Key: key, Value: value})
 	if err != nil {
 		return fmt.Errorf("failed to apply raft set: %w", err)
 	}
 	return nil
 }
 
-func (dkv *KV) Delete(key string) error {
-	err := dkv.store.Delete(key)
+func (kv *KV) Delete(key string) error {
+	err := kv.store.Delete(key)
 	if err != nil {
 		return fmt.Errorf("failed to delete key: %s from kv: %w", key, err)
 	}
 	// Replicate Delete
-	_, err = dkv.apply(DeleteRequestType, &api.DeleteRequest{Key: key})
+	_, err = kv.apply(DeleteRequestType, &api.DeleteRequest{Key: key})
 	if err != nil {
 		return fmt.Errorf("failed to apply replication deleting key: %s from kv: %w", key, err)
 	}
 	return nil
 }
 
-func (dkv *KV) Get(key string) ([]byte, error) {
-	return dkv.store.Get(key)
+func (kv *KV) Get(key string) ([]byte, error) {
+	return kv.store.Get(key)
 }
 
-func (dkv *KV) List() <-chan []byte {
-	return dkv.store.List()
+func (kv *KV) List() <-chan []byte {
+	return kv.store.List()
 }
 
-func (dkv *KV) GetServers() ([]*api.Server, error) {
-	future := dkv.raft.GetConfiguration()
+func (kv *KV) GetServers() ([]*api.Server, error) {
+	future := kv.raft.GetConfiguration()
 	if err := future.Error(); err != nil {
 		return nil, fmt.Errorf("failed on get raft configuration future: %w", err)
 	}
@@ -108,28 +108,28 @@ func (dkv *KV) GetServers() ([]*api.Server, error) {
 		servers = append(servers, &api.Server{
 			Id:       string(server.ID),
 			RpcAddr:  string(server.Address),
-			IsLeader: dkv.raft.Leader() == server.Address,
+			IsLeader: kv.raft.Leader() == server.Address,
 		})
 	}
 	return servers, nil
 }
 
-func (dkv *KV) Join(id, addr string) error {
+func (kv *KV) Join(id, addr string) error {
 	slog.Info("attempting to join", "id", id, "addr", addr)
 
 	serverID := raft.ServerID(id)
 	serverAddr := raft.ServerAddress(addr)
 
-	isLeader := dkv.raft.State() == raft.Leader
+	isLeader := kv.raft.State() == raft.Leader
 	slog.Info("join request received", "am_i_leader", isLeader)
 
 	if !isLeader {
-		slog.Info("not leader, forwarding join request", "leader_addr", dkv.raft.Leader())
+		slog.Info("not leader, forwarding join request", "leader_addr", kv.raft.Leader())
 		return fmt.Errorf("not the leader, cannot process join")
 	}
 
 	slog.Info("checking configuration")
-	configFuture := dkv.raft.GetConfiguration()
+	configFuture := kv.raft.GetConfiguration()
 	if err := configFuture.Error(); err != nil {
 		return fmt.Errorf("failed to get raft configuration: %w", err)
 	}
@@ -143,12 +143,12 @@ func (dkv *KV) Join(id, addr string) error {
 	}
 
 	slog.Info("adding voter to cluster", "id", id, "addr", addr)
-	addFuture := dkv.raft.AddVoter(serverID, serverAddr, 0, 0)
+	addFuture := kv.raft.AddVoter(serverID, serverAddr, 0, 0)
 	if err := addFuture.Error(); err != nil {
 		return fmt.Errorf("failed to add voter: %w", err)
 	}
 
-	if err := dkv.WaitForLeader(3 * time.Second); err != nil {
+	if err := kv.WaitForLeader(3 * time.Second); err != nil {
 		return fmt.Errorf("failed waiting for leader after join: %w", err)
 	}
 
@@ -156,20 +156,20 @@ func (dkv *KV) Join(id, addr string) error {
 	return nil
 }
 
-func (dkv *KV) Leave(id string) error {
-	removeFuture := dkv.raft.RemoveServer(raft.ServerID(id), 0, 0)
+func (kv *KV) Leave(id string) error {
+	removeFuture := kv.raft.RemoveServer(raft.ServerID(id), 0, 0)
 	return removeFuture.Error()
 }
 
-func (dkv *KV) Close() error {
-	f := dkv.raft.Shutdown()
+func (kv *KV) Close() error {
+	f := kv.raft.Shutdown()
 	if err := f.Error(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (dkv *KV) WaitForLeader(timeout time.Duration) error {
+func (kv *KV) WaitForLeader(timeout time.Duration) error {
 	timeoutc := time.After(timeout)
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -178,15 +178,15 @@ func (dkv *KV) WaitForLeader(timeout time.Duration) error {
 		case <-timeoutc:
 			return errors.New("timed out")
 		case <-ticker.C:
-			if l := dkv.raft.Leader(); l != "" {
+			if l := kv.raft.Leader(); l != "" {
 				return nil
 			}
 		}
 	}
 }
 
-func (dkv *KV) setupRaft(dataDir string) error {
-	fsm := &fsm{kv: dkv.store}
+func (kv *KV) setupRaft(dataDir string) error {
+	fsm := &fsm{kv: kv.store}
 
 	raftDir := filepath.Join(dataDir, "raft")
 	if err := os.MkdirAll(raftDir, 0755); err != nil {
@@ -212,30 +212,30 @@ func (dkv *KV) setupRaft(dataDir string) error {
 	maxPool := 5
 	timeout := 10 * time.Second
 	transport := raft.NewNetworkTransport(
-		&dkv.cfg.Raft.StreamLayer,
+		&kv.cfg.Raft.StreamLayer,
 		maxPool,
 		timeout,
 		os.Stderr,
 	)
 
 	config := raft.DefaultConfig()
-	config.LocalID = dkv.cfg.Raft.LocalID
+	config.LocalID = kv.cfg.Raft.LocalID
 
 	// To override in tests
-	if dkv.cfg.Raft.HeartbeatTimeout != 0 {
-		config.HeartbeatTimeout = dkv.cfg.Raft.HeartbeatTimeout
+	if kv.cfg.Raft.HeartbeatTimeout != 0 {
+		config.HeartbeatTimeout = kv.cfg.Raft.HeartbeatTimeout
 	}
-	if dkv.cfg.Raft.ElectionTimeout != 0 {
-		config.ElectionTimeout = dkv.cfg.Raft.ElectionTimeout
+	if kv.cfg.Raft.ElectionTimeout != 0 {
+		config.ElectionTimeout = kv.cfg.Raft.ElectionTimeout
 	}
-	if dkv.cfg.Raft.LeaderLeaseTimeout != 0 {
-		config.LeaderLeaseTimeout = dkv.cfg.Raft.LeaderLeaseTimeout
+	if kv.cfg.Raft.LeaderLeaseTimeout != 0 {
+		config.LeaderLeaseTimeout = kv.cfg.Raft.LeaderLeaseTimeout
 	}
-	if dkv.cfg.Raft.CommitTimeout != 0 {
-		config.CommitTimeout = dkv.cfg.Raft.CommitTimeout
+	if kv.cfg.Raft.CommitTimeout != 0 {
+		config.CommitTimeout = kv.cfg.Raft.CommitTimeout
 	}
 
-	dkv.raft, err = raft.NewRaft(
+	kv.raft, err = raft.NewRaft(
 		config,
 		fsm,
 		logStore,
@@ -256,7 +256,7 @@ func (dkv *KV) setupRaft(dataDir string) error {
 		return fmt.Errorf("failed to if raft has exisiting state: %w", err)
 	}
 
-	if dkv.cfg.Raft.Bootstrap && !hasState {
+	if kv.cfg.Raft.Bootstrap && !hasState {
 		slog.Info("bootstrapping first node",
 			"id", config.LocalID,
 			"addr", transport.LocalAddr())
@@ -269,7 +269,7 @@ func (dkv *KV) setupRaft(dataDir string) error {
 				},
 			},
 		}
-		err = dkv.raft.BootstrapCluster(config).Error()
+		err = kv.raft.BootstrapCluster(config).Error()
 		if err != nil {
 			return fmt.Errorf("failed to bootstrap: %w", err)
 		}
@@ -279,7 +279,7 @@ func (dkv *KV) setupRaft(dataDir string) error {
 	return nil
 }
 
-func (dkv *KV) apply(reqType RequestType, req proto.Message) (any, error) {
+func (kv *KV) apply(reqType RequestType, req proto.Message) (any, error) {
 	var buf bytes.Buffer
 	// Write the reqType byte to the buffer to differentiate from other requests
 	// later on
@@ -299,7 +299,7 @@ func (dkv *KV) apply(reqType RequestType, req proto.Message) (any, error) {
 	timeout := 10 * time.Second
 
 	// Here we call the actual raft Apply method
-	future := dkv.raft.Apply(buf.Bytes(), timeout)
+	future := kv.raft.Apply(buf.Bytes(), timeout)
 	if future.Error() != nil {
 		return nil, future.Error()
 	}
