@@ -185,6 +185,10 @@ func (kv *KV) WaitForLeader(timeout time.Duration) error {
 	}
 }
 
+type fsm struct {
+	kv Store
+}
+
 func (kv *KV) setupRaft(dataDir string) error {
 	fsm := &fsm{kv: kv.store}
 
@@ -221,20 +225,6 @@ func (kv *KV) setupRaft(dataDir string) error {
 	config := raft.DefaultConfig()
 	config.LocalID = kv.cfg.Raft.LocalID
 
-	// To override in tests
-	if kv.cfg.Raft.HeartbeatTimeout != 0 {
-		config.HeartbeatTimeout = kv.cfg.Raft.HeartbeatTimeout
-	}
-	if kv.cfg.Raft.ElectionTimeout != 0 {
-		config.ElectionTimeout = kv.cfg.Raft.ElectionTimeout
-	}
-	if kv.cfg.Raft.LeaderLeaseTimeout != 0 {
-		config.LeaderLeaseTimeout = kv.cfg.Raft.LeaderLeaseTimeout
-	}
-	if kv.cfg.Raft.CommitTimeout != 0 {
-		config.CommitTimeout = kv.cfg.Raft.CommitTimeout
-	}
-
 	kv.raft, err = raft.NewRaft(
 		config,
 		fsm,
@@ -253,7 +243,7 @@ func (kv *KV) setupRaft(dataDir string) error {
 		snapshotStore,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to if raft has exisiting state: %w", err)
+		return fmt.Errorf("failed to check if raft has exisiting state: %w", err)
 	}
 
 	if kv.cfg.Raft.Bootstrap && !hasState {
@@ -312,10 +302,6 @@ func (kv *KV) apply(reqType RequestType, req proto.Message) (any, error) {
 
 // Finite State Machine
 var _ raft.FSM = (*fsm)(nil)
-
-type fsm struct {
-	kv Store
-}
 
 // This will get called on every node in the cluster
 func (fsm *fsm) Apply(log *raft.Log) any {
