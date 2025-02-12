@@ -1,6 +1,6 @@
 module github.com/mateopresacastro/mokv
 
-go 1.23.4
+go 1.24.0
 
 require (
 	github.com/casbin/casbin/v2 v2.103.0
