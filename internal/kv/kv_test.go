@@ -63,7 +63,7 @@ func TestDistributedKVReplication(t *testing.T) {
 		peerTLSConfig,
 	)
 
-	node1, err := kv.NewKV(store1, cfg1)
+	node1, err := kv.New(store1, cfg1)
 	if err != nil {
 		t.Fatalf("failed to create node 1: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestDistributedKVReplication(t *testing.T) {
 		peerTLSConfig,
 	)
 
-	node2, err := kv.NewKV(store2, cfg2)
+	node2, err := kv.New(store2, cfg2)
 	if err != nil {
 		t.Fatalf("failed to create node 2: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestDistributedKVReplication(t *testing.T) {
 		peerTLSConfig,
 	)
 
-	node3, err := kv.NewKV(store3, cfg3)
+	node3, err := kv.New(store3, cfg3)
 	if err != nil {
 		t.Fatalf("failed to create node 2: %v", err)
 	}

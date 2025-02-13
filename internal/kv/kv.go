@@ -56,7 +56,7 @@ type KV struct {
 	raft  *raft.Raft
 }
 
-func NewKV(store store.Store, cfg *KVConfig) (*KV, error) {
+func New(store store.Store, cfg *KVConfig) (*KV, error) {
 	kv := &KV{cfg: cfg, store: store}
 	if err := kv.setupRaft(kv.cfg.DataDir); err != nil {
 		slog.Error("failed setting up raft", "err", err)

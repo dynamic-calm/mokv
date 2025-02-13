@@ -165,7 +165,7 @@ func (r *MOKV) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 	)
 
 	store := store.New()
-	kv, err := kv.NewKV(store, kvCFG)
+	kv, err := kv.New(store, kvCFG)
 	if err != nil {
 		return nil, err
 	}
