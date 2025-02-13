@@ -1,4 +1,4 @@
-package mokv_test
+package kv_test
 
 import (
 	"net"
@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dynamic-calm/mokv"
 	"github.com/dynamic-calm/mokv/config"
+	"github.com/dynamic-calm/mokv/internal/kv"
 	"github.com/dynamic-calm/mokv/internal/store"
 	"github.com/soheilhy/cmux"
 )
@@ -50,20 +50,20 @@ func TestDistributedKVReplication(t *testing.T) {
 	mux1 := cmux.New(ln1)
 	raftLn1 := mux1.Match(cmux.Any()) // For testing, accept any connection as Raft
 
-	cfg1 := &mokv.KVConfig{
+	cfg1 := &kv.KVConfig{
 		DataDir: dir1,
 	}
 	cfg1.Raft.BindAddr = "127.0.0.1:3001"
 	cfg1.Raft.RPCPort = "3000"
 	cfg1.Raft.LocalID = "node-1"
 	cfg1.Raft.Bootstrap = true
-	cfg1.Raft.StreamLayer = *mokv.NewStreamLayer(
+	cfg1.Raft.StreamLayer = *kv.NewStreamLayer(
 		raftLn1,
 		serverTLSConfig,
 		peerTLSConfig,
 	)
 
-	node1, err := mokv.NewKV(store1, cfg1)
+	node1, err := kv.NewKV(store1, cfg1)
 	if err != nil {
 		t.Fatalf("failed to create node 1: %v", err)
 	}
@@ -83,20 +83,20 @@ func TestDistributedKVReplication(t *testing.T) {
 	mux2 := cmux.New(ln2)
 	raftLn2 := mux2.Match(cmux.Any())
 
-	cfg2 := &mokv.KVConfig{
+	cfg2 := &kv.KVConfig{
 		DataDir: dir2,
 	}
 	cfg2.Raft.BindAddr = "127.0.0.1:3002"
 	cfg2.Raft.RPCPort = "3001"
 	cfg2.Raft.LocalID = "node-2"
 	cfg2.Raft.Bootstrap = false
-	cfg2.Raft.StreamLayer = *mokv.NewStreamLayer(
+	cfg2.Raft.StreamLayer = *kv.NewStreamLayer(
 		raftLn2,
 		serverTLSConfig,
 		peerTLSConfig,
 	)
 
-	node2, err := mokv.NewKV(store2, cfg2)
+	node2, err := kv.NewKV(store2, cfg2)
 	if err != nil {
 		t.Fatalf("failed to create node 2: %v", err)
 	}
@@ -174,20 +174,20 @@ func TestDistributedKVReplication(t *testing.T) {
 	mux3 := cmux.New(ln3)
 	raftLn3 := mux3.Match(cmux.Any())
 
-	cfg3 := &mokv.KVConfig{
+	cfg3 := &kv.KVConfig{
 		DataDir: dir3,
 	}
 	cfg3.Raft.BindAddr = "127.0.0.1:3003"
 	cfg3.Raft.RPCPort = "3002"
 	cfg3.Raft.LocalID = "node-3"
 	cfg3.Raft.Bootstrap = false
-	cfg3.Raft.StreamLayer = *mokv.NewStreamLayer(
+	cfg3.Raft.StreamLayer = *kv.NewStreamLayer(
 		raftLn3,
 		serverTLSConfig,
 		peerTLSConfig,
 	)
 
-	node3, err := mokv.NewKV(store3, cfg3)
+	node3, err := kv.NewKV(store3, cfg3)
 	if err != nil {
 		t.Fatalf("failed to create node 2: %v", err)
 	}

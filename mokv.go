@@ -16,6 +16,7 @@ import (
 
 	"github.com/dynamic-calm/mokv/config"
 	"github.com/dynamic-calm/mokv/internal/auth"
+	"github.com/dynamic-calm/mokv/internal/kv"
 	"github.com/dynamic-calm/mokv/internal/store"
 	"github.com/hashicorp/raft"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -46,7 +47,7 @@ type GetEnv func(string) string
 type MOKV struct {
 	cfg           *Config
 	getEnv        GetEnv
-	kv            KVI
+	kv            kv.KVI
 	meterProvider *metric.MeterProvider
 }
 
@@ -138,7 +139,7 @@ func (r *MOKV) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 	}
 
 	mux := cmux.New(listener)
-	kvCFG := &KVConfig{DataDir: r.cfg.DataDir}
+	kvCFG := &kv.KVConfig{DataDir: r.cfg.DataDir}
 	kvCFG.Raft.BindAddr = r.cfg.BindAddr
 	kvCFG.Raft.RPCPort = port
 	kvCFG.Raft.LocalID = raft.ServerID(r.cfg.NodeName)
@@ -152,17 +153,17 @@ func (r *MOKV) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 		if _, err := reader.Read(b); err != nil {
 			return false
 		}
-		return bytes.Compare(b, []byte{byte(RaftRPC)}) == 0
+		return bytes.Compare(b, []byte{byte(kv.RaftRPC)}) == 0
 	})
 
-	kvCFG.Raft.StreamLayer = *NewStreamLayer(
+	kvCFG.Raft.StreamLayer = *kv.NewStreamLayer(
 		raftLn,
 		r.cfg.ServerTLSConfig,
 		r.cfg.PeerTLSConfig,
 	)
 
 	store := store.New()
-	kv, err := NewKV(store, kvCFG)
+	kv, err := kv.NewKV(store, kvCFG)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +213,7 @@ func (r *MOKV) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 }
 
 func (r *MOKV) setupMemership(ctx context.Context) error {
-	distributekv, ok := r.kv.(*KV)
+	distributekv, ok := r.kv.(*kv.KV)
 	if !ok {
 		return fmt.Errorf("failed to convert kv to *kv.Distributekv")
 	}

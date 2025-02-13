@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dynamic-calm/mokv/api"
+	"github.com/dynamic-calm/mokv/internal/kv"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
@@ -22,9 +23,9 @@ import (
 
 type kvServer struct {
 	api.KVServer
-	KV           KVI
+	KV           kv.KVI
 	authorizer   Authorizer
-	serverGetter ServerProvider
+	serverGetter kv.ServerProvider
 }
 
 const (
@@ -37,22 +38,22 @@ type Authorizer interface {
 	Authorize(subject, object, action string) error
 }
 
-func NewServerGetter(kv KVI) ServerProvider {
+func NewServerGetter(kv kv.KVI) kv.ServerProvider {
 	return &kvServerGetter{kv: kv}
 }
 
 type kvServerGetter struct {
-	kv KVI
+	kv kv.KVI
 }
 
 func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
-	if provider, ok := kg.kv.(ServerProvider); ok {
+	if provider, ok := kg.kv.(kv.ServerProvider); ok {
 		return provider.GetServers()
 	}
 	return nil, fmt.Errorf("kv store does not support getting servers")
 }
 
-func NewServer(KV KVI, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
+func NewServer(KV kv.KVI, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 
 	logOpts := []logging.Option{
