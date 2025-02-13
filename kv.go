@@ -90,6 +90,35 @@ func (kv *KV) List() <-chan []byte {
 	return kv.store.List()
 }
 
+func (kv *KV) apply(reqType RequestType, req proto.Message) (any, error) {
+	var buf bytes.Buffer
+	// Write the reqType byte to the buffer to differentiate from other requests
+	// later on
+	_, err := buf.Write([]byte{byte(reqType)})
+	if err != nil {
+		return nil, err
+	}
+	b, err := proto.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	// Add the actual request after that first byte
+	_, err = buf.Write(b)
+	if err != nil {
+		return nil, err
+	}
+	timeout := 10 * time.Second
+	future := kv.raft.Apply(buf.Bytes(), timeout)
+	if future.Error() != nil {
+		return nil, future.Error()
+	}
+	res := future.Response()
+	if err, ok := res.(error); ok {
+		return nil, err
+	}
+	return res, nil
+}
+
 func (kv *KV) GetServers() ([]*api.Server, error) {
 	future := kv.raft.GetConfiguration()
 	if err := future.Error(); err != nil {
@@ -114,13 +143,11 @@ func (kv *KV) Join(id, addr string) error {
 
 	isLeader := kv.raft.State() == raft.Leader
 	slog.Info("join request received", "am_i_leader", isLeader)
-
 	if !isLeader {
-		slog.Info("not leader, forwarding join request", "leader_addr", kv.raft.Leader())
-		return fmt.Errorf("not the leader, cannot process join")
+		leaderAddr := kv.raft.Leader()
+		return fmt.Errorf("not the leader, please retry join request with leader at %s", leaderAddr)
 	}
 
-	slog.Info("checking configuration")
 	configFuture := kv.raft.GetConfiguration()
 	if err := configFuture.Error(); err != nil {
 		return fmt.Errorf("failed to get raft configuration: %w", err)
@@ -135,7 +162,7 @@ func (kv *KV) Join(id, addr string) error {
 	}
 
 	slog.Info("adding voter to cluster", "id", id, "addr", addr)
-	addFuture := kv.raft.AddVoter(serverID, serverAddr, 0, 0)
+	addFuture := kv.raft.AddVoter(serverID, serverAddr, 0, time.Second*10)
 	if err := addFuture.Error(); err != nil {
 		return fmt.Errorf("failed to add voter: %w", err)
 	}
@@ -226,6 +253,7 @@ func (kv *KV) setupRaft(dataDir string) error {
 		snapshotStore,
 		transport,
 	)
+
 	if err != nil {
 		return fmt.Errorf("failed to create new raft: %w", err)
 	}
@@ -235,6 +263,7 @@ func (kv *KV) setupRaft(dataDir string) error {
 		stableStore,
 		snapshotStore,
 	)
+
 	if err != nil {
 		return fmt.Errorf("failed to check if raft has exisiting state: %w", err)
 	}
@@ -260,39 +289,6 @@ func (kv *KV) setupRaft(dataDir string) error {
 	}
 
 	return nil
-}
-
-func (kv *KV) apply(reqType RequestType, req proto.Message) (any, error) {
-	var buf bytes.Buffer
-	// Write the reqType byte to the buffer to differentiate from other requests
-	// later on
-	_, err := buf.Write([]byte{byte(reqType)})
-	if err != nil {
-		return nil, err
-	}
-	b, err := proto.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	// Add the actual request after that first byte
-	_, err = buf.Write(b)
-	if err != nil {
-		return nil, err
-	}
-	timeout := 10 * time.Second
-
-	// Here we call the actual raft Apply method
-	slog.Info("replicating", "reqType", reqType)
-
-	future := kv.raft.Apply(buf.Bytes(), timeout)
-	if future.Error() != nil {
-		return nil, future.Error()
-	}
-	res := future.Response()
-	if err, ok := res.(error); ok {
-		return nil, err
-	}
-	return res, nil
 }
 
 // Finite State Machine
