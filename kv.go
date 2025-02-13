@@ -182,11 +182,12 @@ func (kv *KV) WaitForLeader(timeout time.Duration) error {
 }
 
 type fsm struct {
-	kv Store
+	kv      Store
+	dataDir string
 }
 
 func (kv *KV) setupRaft(dataDir string) error {
-	fsm := &fsm{kv: kv.store}
+	fsm := &fsm{kv: kv.store, dataDir: dataDir}
 
 	raftDir := filepath.Join(dataDir, "raft")
 	if err := os.MkdirAll(raftDir, 0755); err != nil {
@@ -289,6 +290,8 @@ func (kv *KV) apply(reqType RequestType, req proto.Message) (any, error) {
 	timeout := 10 * time.Second
 
 	// Here we call the actual raft Apply method
+	slog.Info("replicating", "reqType", reqType)
+
 	future := kv.raft.Apply(buf.Bytes(), timeout)
 	if future.Error() != nil {
 		return nil, future.Error()
@@ -308,6 +311,7 @@ func (fsm *fsm) Apply(log *raft.Log) any {
 	buf := log.Data
 	// Get the reqType from the first byte of the buffer
 	reqType := RequestType(buf[0])
+	slog.Info("FSM", "reqType", reqType)
 	switch reqType {
 	case SetRequestType:
 		return fsm.applySet(buf[1:])
@@ -328,6 +332,7 @@ func (fsm *fsm) applySet(b []byte) any {
 	if err != nil {
 		return err
 	}
+	slog.Info("SET operation executed by FSM", "req", req.Key, "value", req.Value, "dataDir", fsm.dataDir)
 	return &api.SetResponse{Ok: true}
 }
 
@@ -341,6 +346,7 @@ func (fsm *fsm) applyDelete(b []byte) any {
 	if err != nil {
 		return err
 	}
+	slog.Info("DELETE operation executed by FSM", "req", req.Key, "dataDir", fsm.dataDir)
 	return &api.DeleteResponse{Ok: true}
 }
 
