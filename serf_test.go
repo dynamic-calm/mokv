@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mateopresacastro/mokv"
+	"github.com/dynamic-calm/mokv"
 )
 
 type testHandler struct {

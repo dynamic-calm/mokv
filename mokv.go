@@ -14,10 +14,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dynamic-calm/mokv/config"
+	"github.com/dynamic-calm/mokv/internal/auth"
+	"github.com/dynamic-calm/mokv/internal/store"
 	"github.com/hashicorp/raft"
-	"github.com/mateopresacastro/mokv/config"
-	"github.com/mateopresacastro/mokv/internal/auth"
-	"github.com/mateopresacastro/mokv/internal/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/otel/exporters/prometheus"

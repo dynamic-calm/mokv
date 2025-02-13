@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mateopresacastro/mokv"
-	"github.com/mateopresacastro/mokv/config"
-	"github.com/mateopresacastro/mokv/internal/store"
+	"github.com/dynamic-calm/mokv"
+	"github.com/dynamic-calm/mokv/config"
+	"github.com/dynamic-calm/mokv/internal/store"
 	"github.com/soheilhy/cmux"
 )
 

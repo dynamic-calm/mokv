@@ -6,8 +6,8 @@ import (
 	"os"
 	"path"
 
-	"github.com/mateopresacastro/mokv"
-	"github.com/mateopresacastro/mokv/config"
+	"github.com/dynamic-calm/mokv"
+	"github.com/dynamic-calm/mokv/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
