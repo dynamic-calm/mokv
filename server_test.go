@@ -14,6 +14,7 @@ import (
 	"github.com/mateopresacastro/mokv"
 	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/config"
+	"github.com/mateopresacastro/mokv/internal/store"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -32,7 +33,7 @@ func TestAPI(t *testing.T) {
 	}
 	defer listener.Close()
 
-	store := mokv.NewStore()
+	st := store.New()
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
@@ -46,7 +47,7 @@ func TestAPI(t *testing.T) {
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 	authorizer := mokv.NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
-	server := mokv.NewServer(store, authorizer, grpc.Creds(serverCreds))
+	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -114,7 +115,7 @@ func TestStream(t *testing.T) {
 	}
 	defer listener.Close()
 
-	store := mokv.NewStore()
+	st := store.New()
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
@@ -128,7 +129,7 @@ func TestStream(t *testing.T) {
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 	authorizer := mokv.NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
-	server := mokv.NewServer(store, authorizer, grpc.Creds(serverCreds))
+	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
 	go func() {
 		if err := server.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
@@ -214,7 +215,7 @@ func TestListErrors(t *testing.T) {
 	}
 	defer listener.Close()
 
-	store := mokv.NewStore()
+	st := store.New()
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
@@ -228,7 +229,7 @@ func TestListErrors(t *testing.T) {
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 	authorizer := mokv.NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
-	server := mokv.NewServer(store, authorizer, grpc.Creds(serverCreds))
+	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
 	go func() {
 		if err := server.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
@@ -316,7 +317,7 @@ func TestConcurrency(t *testing.T) {
 	}
 	defer listener.Close()
 
-	store := mokv.NewStore()
+	st := store.New()
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
@@ -330,7 +331,7 @@ func TestConcurrency(t *testing.T) {
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 	authorizer := mokv.NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
-	server := mokv.NewServer(store, authorizer, grpc.Creds(serverCreds))
+	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
 	go func() {
 		if err := server.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
@@ -405,7 +406,7 @@ func TestAuthorization(t *testing.T) {
 	}
 	defer listener.Close()
 
-	store := mokv.NewStore()
+	st := store.New()
 	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
@@ -419,7 +420,7 @@ func TestAuthorization(t *testing.T) {
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 	authorizer := mokv.NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
-	server := mokv.NewServer(store, authorizer, grpc.Creds(serverCreds))
+	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
 
 	go func() {
 		if err := server.Serve(listener); err != nil {

@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/mateopresacastro/mokv/api"
+	"github.com/mateopresacastro/mokv/internal/store"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -51,11 +52,11 @@ type KVConfig struct {
 
 type KV struct {
 	cfg   *KVConfig
-	store Store
+	store store.Store
 	raft  *raft.Raft
 }
 
-func NewKV(store Store, cfg *KVConfig) (*KV, error) {
+func NewKV(store store.Store, cfg *KVConfig) (*KV, error) {
 	kv := &KV{cfg: cfg, store: store}
 	if err := kv.setupRaft(kv.cfg.DataDir); err != nil {
 		slog.Error("failed setting up raft", "err", err)
@@ -201,7 +202,7 @@ func (kv *KV) WaitForLeader(timeout time.Duration) error {
 }
 
 type fsm struct {
-	kv      Store
+	kv      store.Store
 	dataDir string
 }
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/mateopresacastro/mokv/config"
+	"github.com/mateopresacastro/mokv/internal/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/otel/exporters/prometheus"
@@ -159,7 +160,7 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 		r.cfg.PeerTLSConfig,
 	)
 
-	store := NewStore()
+	store := store.New()
 	kv, err := NewKV(store, kvCFG)
 	if err != nil {
 		return nil, err
