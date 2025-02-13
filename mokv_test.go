@@ -62,7 +62,7 @@ func TestRunE2E(t *testing.T) {
 	}
 
 	// Create runner config
-	cfg := &mokv.RunnerConfig{
+	cfg := &mokv.Config{
 		DataDir:         testDir,
 		NodeName:        hostname,
 		BindAddr:        "127.0.0.1:8401",
@@ -76,7 +76,7 @@ func TestRunE2E(t *testing.T) {
 	}
 
 	// Create and start runner
-	r := mokv.NewRunner(cfg, os.Getenv)
+	r := mokv.New(cfg, os.Getenv)
 	go func() {
 		r.Run(ctx)
 	}()

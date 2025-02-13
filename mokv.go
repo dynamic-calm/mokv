@@ -27,7 +27,7 @@ import (
 	"google.golang.org/grpc/stats/opentelemetry"
 )
 
-type RunnerConfig struct {
+type Config struct {
 	DataDir         string
 	NodeName        string
 	BindAddr        string
@@ -43,18 +43,18 @@ type RunnerConfig struct {
 
 type GetEnv func(string) string
 
-type Runner struct {
-	cfg           *RunnerConfig
+type MOKV struct {
+	cfg           *Config
 	getEnv        GetEnv
 	kv            KVI
 	meterProvider *metric.MeterProvider
 }
 
-func NewRunner(cfg *RunnerConfig, getEnv GetEnv) *Runner {
-	return &Runner{cfg: cfg, getEnv: getEnv}
+func New(cfg *Config, getEnv GetEnv) *MOKV {
+	return &MOKV{cfg: cfg, getEnv: getEnv}
 }
 
-func (r *Runner) Run(ctx context.Context) error {
+func (r *MOKV) Run(ctx context.Context) error {
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	// This deferred cancel function will signal all goroutines to exit
 	// on all return paths.
@@ -83,7 +83,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 }
 
-func (r *Runner) setupMetricsServer(ctx context.Context) (<-chan error, error) {
+func (r *MOKV) setupMetricsServer(ctx context.Context) (<-chan error, error) {
 	errc := make(chan error, 1)
 	exp, err := prometheus.New()
 	if err != nil {
@@ -119,7 +119,7 @@ func (r *Runner) setupMetricsServer(ctx context.Context) (<-chan error, error) {
 	return errc, nil
 }
 
-func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
+func (r *MOKV) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 	port := strconv.Itoa(r.cfg.RPCPort)
 	listener, err := net.Listen("tcp", "127.0.0.1:"+port)
 	if err != nil {
@@ -211,7 +211,7 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 	return errc, nil
 }
 
-func (r *Runner) setupMemership(ctx context.Context) error {
+func (r *MOKV) setupMemership(ctx context.Context) error {
 	distributekv, ok := r.kv.(*KV)
 	if !ok {
 		return fmt.Errorf("failed to convert kv to *kv.Distributekv")
