@@ -16,6 +16,7 @@ import (
 
 	"github.com/dynamic-calm/mokv/config"
 	"github.com/dynamic-calm/mokv/internal/auth"
+	"github.com/dynamic-calm/mokv/internal/discovery"
 	"github.com/dynamic-calm/mokv/internal/kv"
 	"github.com/dynamic-calm/mokv/internal/store"
 	"github.com/hashicorp/raft"
@@ -218,7 +219,7 @@ func (r *MOKV) setupMemership(ctx context.Context) error {
 		return fmt.Errorf("failed to convert kv to *kv.Distributekv")
 	}
 	rpcAddr := fmt.Sprintf("127.0.0.1:%d", r.cfg.RPCPort)
-	membership, err := NewMembership(distributekv, MembershipConfig{
+	membership, err := discovery.NewMembership(distributekv, discovery.MembershipConfig{
 		NodeName: r.cfg.NodeName,
 		BindAddr: r.cfg.BindAddr,
 		Tags: map[string]string{

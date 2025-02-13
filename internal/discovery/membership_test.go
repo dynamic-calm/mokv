@@ -1,11 +1,11 @@
-package mokv_test
+package discovery_test
 
 import (
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/dynamic-calm/mokv"
+	"github.com/dynamic-calm/mokv/internal/discovery"
 )
 
 type testHandler struct {
@@ -30,13 +30,13 @@ func (h *testHandler) Leave(id string) error {
 	return nil
 }
 
-func setupMember(t *testing.T, members []*mokv.Membership, port int) ([]*mokv.Membership, *testHandler) {
+func setupMember(t *testing.T, members []*discovery.Membership, port int) ([]*discovery.Membership, *testHandler) {
 	id := len(members)
 	addr := fmt.Sprintf("%s:%d", "127.0.0.1", port)
 	tags := map[string]string{
 		"rpc_addr": addr,
 	}
-	c := mokv.MembershipConfig{
+	c := discovery.MembershipConfig{
 		NodeName: fmt.Sprintf("%d", id),
 		BindAddr: addr,
 		Tags:     tags,
@@ -51,7 +51,7 @@ func setupMember(t *testing.T, members []*mokv.Membership, port int) ([]*mokv.Me
 		c.StartJoinAddrs = []string{members[0].BindAddr}
 	}
 
-	m, err := mokv.NewMembership(h, c)
+	m, err := discovery.NewMembership(h, c)
 	if err != nil {
 		t.Fatalf("error creating discovery: %v", err)
 	}
