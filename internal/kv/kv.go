@@ -1,4 +1,4 @@
-package mokv
+package kv
 
 import (
 	"bytes"
@@ -13,9 +13,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/dynamic-calm/mokv/internal/api"
+	"github.com/dynamic-calm/mokv/internal/store"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
-	"github.com/mateopresacastro/mokv/api"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -51,11 +52,11 @@ type KVConfig struct {
 
 type KV struct {
 	cfg   *KVConfig
-	store Store
+	store store.Store
 	raft  *raft.Raft
 }
 
-func NewKV(store Store, cfg *KVConfig) (*KV, error) {
+func New(store store.Store, cfg *KVConfig) (*KV, error) {
 	kv := &KV{cfg: cfg, store: store}
 	if err := kv.setupRaft(kv.cfg.DataDir); err != nil {
 		slog.Error("failed setting up raft", "err", err)
@@ -201,7 +202,7 @@ func (kv *KV) WaitForLeader(timeout time.Duration) error {
 }
 
 type fsm struct {
-	kv      Store
+	kv      store.Store
 	dataDir string
 }
 

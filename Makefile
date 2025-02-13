@@ -2,7 +2,7 @@ CONFIG_PATH=${HOME}/.mokv
 
 .PHONY: compile
 compile:
-	protoc api/*.proto \
+	protoc internal/api/*.proto \
 		--go_out=. \
 		--go-grpc_out=. \
 		--go_opt=paths=source_relative \
@@ -61,5 +61,5 @@ cicd: compile gencert test
 
 .PHONY: build
 build:
-	go build -o mokv ./cmd/mokv/main.go
+	go build -o bin/mokv ./cmd/mokv/main.go
 

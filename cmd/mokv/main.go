@@ -6,18 +6,18 @@ import (
 	"os"
 	"path"
 
-	"github.com/mateopresacastro/mokv"
-	"github.com/mateopresacastro/mokv/config"
+	"github.com/dynamic-calm/mokv"
+	"github.com/dynamic-calm/mokv/config"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 type cli struct {
-	cfg Cfg
+	Cfg
 }
 
 type Cfg struct {
-	*mokv.RunnerConfig
+	*mokv.Config
 	ServerTLSConfig config.TLSConfig
 	PeerTLSConfig   config.TLSConfig
 }
@@ -66,8 +66,8 @@ func setupFlags(cmd *cobra.Command) error {
 
 func (cli *cli) setupConfig(cmd *cobra.Command, args []string) error {
 	var err error
-	if cli.cfg.RunnerConfig == nil {
-		cli.cfg.RunnerConfig = &mokv.RunnerConfig{}
+	if cli.Config == nil {
+		cli.Config = &mokv.Config{}
 	}
 
 	configFile, err := cmd.Flags().GetString("config-file")
@@ -81,35 +81,35 @@ func (cli *cli) setupConfig(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	cli.cfg.DataDir = viper.GetString("data-dir")
-	cli.cfg.NodeName = viper.GetString("node-name")
-	cli.cfg.BindAddr = viper.GetString("bind-addr")
-	cli.cfg.RPCPort = viper.GetInt("rpc-port")
-	cli.cfg.StartJoinAddrs = viper.GetStringSlice("start-join-addrs")
-	cli.cfg.Bootstrap = viper.GetBool("bootstrap")
-	cli.cfg.ACLModelFile = viper.GetString("acl-mode-file")
-	cli.cfg.ACLPolicyFile = viper.GetString("acl-policy-file")
-	cli.cfg.ServerTLSConfig.CertFile = viper.GetString("server-tls-cert-file")
-	cli.cfg.ServerTLSConfig.KeyFile = viper.GetString("server-tls-key-file")
-	cli.cfg.ServerTLSConfig.CAFile = viper.GetString("server-tls-ca-file")
-	cli.cfg.ServerTLSConfig.ServerAddress = viper.GetString("node-name")
-	cli.cfg.PeerTLSConfig.CertFile = viper.GetString("peer-tls-cert-file")
-	cli.cfg.PeerTLSConfig.KeyFile = viper.GetString("peer-tls-key-file")
-	cli.cfg.PeerTLSConfig.CAFile = viper.GetString("peer-tls-ca-file")
-	cli.cfg.PeerTLSConfig.ServerAddress = viper.GetString("node-name")
-	cli.cfg.MetricsPort = viper.GetInt("metrics-port")
+	cli.DataDir = viper.GetString("data-dir")
+	cli.NodeName = viper.GetString("node-name")
+	cli.BindAddr = viper.GetString("bind-addr")
+	cli.RPCPort = viper.GetInt("rpc-port")
+	cli.StartJoinAddrs = viper.GetStringSlice("start-join-addrs")
+	cli.Bootstrap = viper.GetBool("bootstrap")
+	cli.ACLModelFile = viper.GetString("acl-mode-file")
+	cli.ACLPolicyFile = viper.GetString("acl-policy-file")
+	cli.ServerTLSConfig.CertFile = viper.GetString("server-tls-cert-file")
+	cli.ServerTLSConfig.KeyFile = viper.GetString("server-tls-key-file")
+	cli.ServerTLSConfig.CAFile = viper.GetString("server-tls-ca-file")
+	cli.ServerTLSConfig.ServerAddress = viper.GetString("node-name")
+	cli.PeerTLSConfig.CertFile = viper.GetString("peer-tls-cert-file")
+	cli.PeerTLSConfig.KeyFile = viper.GetString("peer-tls-key-file")
+	cli.PeerTLSConfig.CAFile = viper.GetString("peer-tls-ca-file")
+	cli.PeerTLSConfig.ServerAddress = viper.GetString("node-name")
+	cli.MetricsPort = viper.GetInt("metrics-port")
 
-	if cli.cfg.ServerTLSConfig.CertFile != "" && cli.cfg.ServerTLSConfig.KeyFile != "" {
-		cli.cfg.ServerTLSConfig.Server = true
-		cli.cfg.RunnerConfig.ServerTLSConfig, err = config.SetupTLSConfig(cli.cfg.ServerTLSConfig)
+	if cli.ServerTLSConfig.CertFile != "" && cli.ServerTLSConfig.KeyFile != "" {
+		cli.ServerTLSConfig.Server = true
+		cli.Config.ServerTLSConfig, err = config.SetupTLSConfig(cli.ServerTLSConfig)
 		if err != nil {
 			return err
 		}
 	}
 
-	if cli.cfg.PeerTLSConfig.CertFile != "" && cli.cfg.PeerTLSConfig.KeyFile != "" {
-		cli.cfg.RunnerConfig.PeerTLSConfig, err = config.SetupTLSConfig(
-			cli.cfg.PeerTLSConfig,
+	if cli.PeerTLSConfig.CertFile != "" && cli.PeerTLSConfig.KeyFile != "" {
+		cli.Config.PeerTLSConfig, err = config.SetupTLSConfig(
+			cli.PeerTLSConfig,
 		)
 		if err != nil {
 			return err
@@ -121,7 +121,7 @@ func (cli *cli) setupConfig(cmd *cobra.Command, args []string) error {
 
 func (cli *cli) run(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	r := mokv.NewRunner(cli.cfg.RunnerConfig, os.Getenv)
+	r := mokv.New(cli.Config, os.Getenv)
 	if err := r.Run(ctx); err != nil {
 		return err
 	}

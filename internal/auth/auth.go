@@ -1,4 +1,4 @@
-package mokv
+package auth
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ type Enforcer struct {
 	enforcer *casbin.Enforcer
 }
 
-func NewAuthorizer(model, policy string) *Enforcer {
+func New(model, policy string) *Enforcer {
 	enforcer, err := casbin.NewEnforcer(model, policy)
 	if err != nil {
 		panic(err)

@@ -1,4 +1,4 @@
-module github.com/mateopresacastro/mokv
+module github.com/dynamic-calm/mokv
 
 go 1.24.0
 

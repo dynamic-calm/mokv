@@ -1,4 +1,4 @@
-package mokv
+package discovery
 
 import (
 	"strings"

@@ -12,9 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mateopresacastro/mokv"
-	"github.com/mateopresacastro/mokv/api"
-	"github.com/mateopresacastro/mokv/config"
+	"github.com/dynamic-calm/mokv"
+	"github.com/dynamic-calm/mokv/config"
+	"github.com/dynamic-calm/mokv/internal/api"
+	"github.com/dynamic-calm/mokv/internal/discovery"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -61,7 +62,7 @@ func TestRunE2E(t *testing.T) {
 	}
 
 	// Create runner config
-	cfg := &mokv.RunnerConfig{
+	cfg := &mokv.Config{
 		DataDir:         testDir,
 		NodeName:        hostname,
 		BindAddr:        "127.0.0.1:8401",
@@ -75,7 +76,7 @@ func TestRunE2E(t *testing.T) {
 	}
 
 	// Create and start runner
-	r := mokv.NewRunner(cfg, os.Getenv)
+	r := mokv.New(cfg, os.Getenv)
 	go func() {
 		r.Run(ctx)
 	}()
@@ -96,7 +97,7 @@ func TestRunE2E(t *testing.T) {
 	clientCreds := credentials.NewTLS(clientTLSConfig)
 	rpcAddr := "127.0.0.1:" + strconv.Itoa(cfg.RPCPort)
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("%s:///%s", mokv.Name, rpcAddr),
+		fmt.Sprintf("%s:///%s", discovery.Name, rpcAddr),
 		grpc.WithTransportCredentials(clientCreds),
 	)
 	if err != nil {

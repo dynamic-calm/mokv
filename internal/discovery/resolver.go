@@ -1,4 +1,4 @@
-package mokv
+package discovery
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mateopresacastro/mokv/api"
+	"github.com/dynamic-calm/mokv/internal/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/resolver"

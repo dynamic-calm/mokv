@@ -14,8 +14,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dynamic-calm/mokv/config"
+	"github.com/dynamic-calm/mokv/internal/auth"
+	"github.com/dynamic-calm/mokv/internal/discovery"
+	"github.com/dynamic-calm/mokv/internal/kv"
+	"github.com/dynamic-calm/mokv/internal/server"
+	"github.com/dynamic-calm/mokv/internal/store"
 	"github.com/hashicorp/raft"
-	"github.com/mateopresacastro/mokv/config"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/otel/exporters/prometheus"
@@ -25,7 +30,7 @@ import (
 	"google.golang.org/grpc/stats/opentelemetry"
 )
 
-type RunnerConfig struct {
+type Config struct {
 	DataDir         string
 	NodeName        string
 	BindAddr        string
@@ -41,18 +46,18 @@ type RunnerConfig struct {
 
 type GetEnv func(string) string
 
-type Runner struct {
-	cfg           *RunnerConfig
+type MOKV struct {
+	cfg           *Config
 	getEnv        GetEnv
-	kv            KVI
+	kv            kv.KVI
 	meterProvider *metric.MeterProvider
 }
 
-func NewRunner(cfg *RunnerConfig, getEnv GetEnv) *Runner {
-	return &Runner{cfg: cfg, getEnv: getEnv}
+func New(cfg *Config, getEnv GetEnv) *MOKV {
+	return &MOKV{cfg: cfg, getEnv: getEnv}
 }
 
-func (r *Runner) Run(ctx context.Context) error {
+func (r *MOKV) Run(ctx context.Context) error {
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	// This deferred cancel function will signal all goroutines to exit
 	// on all return paths.
@@ -81,7 +86,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 }
 
-func (r *Runner) setupMetricsServer(ctx context.Context) (<-chan error, error) {
+func (r *MOKV) setupMetricsServer(ctx context.Context) (<-chan error, error) {
 	errc := make(chan error, 1)
 	exp, err := prometheus.New()
 	if err != nil {
@@ -117,7 +122,7 @@ func (r *Runner) setupMetricsServer(ctx context.Context) (<-chan error, error) {
 	return errc, nil
 }
 
-func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
+func (r *MOKV) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 	port := strconv.Itoa(r.cfg.RPCPort)
 	listener, err := net.Listen("tcp", "127.0.0.1:"+port)
 	if err != nil {
@@ -136,7 +141,7 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 	}
 
 	mux := cmux.New(listener)
-	kvCFG := &KVConfig{DataDir: r.cfg.DataDir}
+	kvCFG := &kv.KVConfig{DataDir: r.cfg.DataDir}
 	kvCFG.Raft.BindAddr = r.cfg.BindAddr
 	kvCFG.Raft.RPCPort = port
 	kvCFG.Raft.LocalID = raft.ServerID(r.cfg.NodeName)
@@ -150,25 +155,25 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 		if _, err := reader.Read(b); err != nil {
 			return false
 		}
-		return bytes.Compare(b, []byte{byte(RaftRPC)}) == 0
+		return bytes.Compare(b, []byte{byte(kv.RaftRPC)}) == 0
 	})
 
-	kvCFG.Raft.StreamLayer = *NewStreamLayer(
+	kvCFG.Raft.StreamLayer = *kv.NewStreamLayer(
 		raftLn,
 		r.cfg.ServerTLSConfig,
 		r.cfg.PeerTLSConfig,
 	)
 
-	store := NewStore()
-	kv, err := NewKV(store, kvCFG)
+	store := store.New()
+	kv, err := kv.New(store, kvCFG)
 	if err != nil {
 		return nil, err
 	}
 
 	r.kv = kv
 
-	authorizer := NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
-	server := NewServer(kv, authorizer, serverOpts...)
+	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
+	server := server.New(kv, authorizer, serverOpts...)
 	grpcLn := mux.Match(cmux.Any())
 
 	errc := make(chan error, 1)
@@ -209,13 +214,13 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 	return errc, nil
 }
 
-func (r *Runner) setupMemership(ctx context.Context) error {
-	distributekv, ok := r.kv.(*KV)
+func (r *MOKV) setupMemership(ctx context.Context) error {
+	distributekv, ok := r.kv.(*kv.KV)
 	if !ok {
 		return fmt.Errorf("failed to convert kv to *kv.Distributekv")
 	}
 	rpcAddr := fmt.Sprintf("127.0.0.1:%d", r.cfg.RPCPort)
-	membership, err := NewMembership(distributekv, MembershipConfig{
+	membership, err := discovery.NewMembership(distributekv, discovery.MembershipConfig{
 		NodeName: r.cfg.NodeName,
 		BindAddr: r.cfg.BindAddr,
 		Tags: map[string]string{
