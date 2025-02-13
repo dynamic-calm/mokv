@@ -15,6 +15,7 @@ import (
 	"github.com/mateopresacastro/mokv"
 	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/config"
+	"github.com/mateopresacastro/mokv/internal/discovery"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -96,7 +97,7 @@ func TestRunE2E(t *testing.T) {
 	clientCreds := credentials.NewTLS(clientTLSConfig)
 	rpcAddr := "127.0.0.1:" + strconv.Itoa(cfg.RPCPort)
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("%s:///%s", mokv.Name, rpcAddr),
+		fmt.Sprintf("%s:///%s", discovery.Name, rpcAddr),
 		grpc.WithTransportCredentials(clientCreds),
 	)
 	if err != nil {
