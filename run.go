@@ -16,6 +16,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/mateopresacastro/mokv/config"
+	"github.com/mateopresacastro/mokv/internal/auth"
 	"github.com/mateopresacastro/mokv/internal/store"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/soheilhy/cmux"
@@ -168,7 +169,7 @@ func (r *Runner) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 
 	r.kv = kv
 
-	authorizer := NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
+	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	server := NewServer(kv, authorizer, serverOpts...)
 	grpcLn := mux.Match(cmux.Any())
 

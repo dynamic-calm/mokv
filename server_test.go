@@ -14,6 +14,7 @@ import (
 	"github.com/mateopresacastro/mokv"
 	"github.com/mateopresacastro/mokv/api"
 	"github.com/mateopresacastro/mokv/config"
+	"github.com/mateopresacastro/mokv/internal/auth"
 	"github.com/mateopresacastro/mokv/internal/store"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -46,7 +47,7 @@ func TestAPI(t *testing.T) {
 	}
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
-	authorizer := mokv.NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
+	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
 	ready := make(chan bool)
 	go func() {
@@ -128,7 +129,7 @@ func TestStream(t *testing.T) {
 	}
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
-	authorizer := mokv.NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
+	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
 	go func() {
 		if err := server.Serve(listener); err != nil {
@@ -228,7 +229,7 @@ func TestListErrors(t *testing.T) {
 	}
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
-	authorizer := mokv.NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
+	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
 	go func() {
 		if err := server.Serve(listener); err != nil {
@@ -330,7 +331,7 @@ func TestConcurrency(t *testing.T) {
 	}
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
-	authorizer := mokv.NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
+	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
 	go func() {
 		if err := server.Serve(listener); err != nil {
@@ -419,7 +420,7 @@ func TestAuthorization(t *testing.T) {
 	}
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
-	authorizer := mokv.NewAuthorizer(config.ACLModelFile, config.ACLPolicyFile)
+	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
 	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
 
 	go func() {
