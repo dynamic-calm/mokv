@@ -65,12 +65,8 @@ func NewKV(store Store, cfg *KVConfig) (*KV, error) {
 }
 
 func (kv *KV) Set(key string, value []byte) error {
-	err := kv.store.Set(key, value)
-	if err != nil {
-		return fmt.Errorf("failed to set key: %s, val: %s from kv: %w", key, string(value), err)
-	}
 	// Replicate Set
-	_, err = kv.apply(SetRequestType, &api.SetRequest{Key: key, Value: value})
+	_, err := kv.apply(SetRequestType, &api.SetRequest{Key: key, Value: value})
 	if err != nil {
 		return fmt.Errorf("failed to apply raft set: %w", err)
 	}
@@ -78,12 +74,8 @@ func (kv *KV) Set(key string, value []byte) error {
 }
 
 func (kv *KV) Delete(key string) error {
-	err := kv.store.Delete(key)
-	if err != nil {
-		return fmt.Errorf("failed to delete key: %s from kv: %w", key, err)
-	}
 	// Replicate Delete
-	_, err = kv.apply(DeleteRequestType, &api.DeleteRequest{Key: key})
+	_, err := kv.apply(DeleteRequestType, &api.DeleteRequest{Key: key})
 	if err != nil {
 		return fmt.Errorf("failed to apply replication deleting key: %s from kv: %w", key, err)
 	}
