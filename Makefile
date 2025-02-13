@@ -61,5 +61,5 @@ cicd: compile gencert test
 
 .PHONY: build
 build:
-	go build -o mokv ./cmd/mokv/main.go
+	go build -o bin/mokv ./cmd/mokv/main.go
 
