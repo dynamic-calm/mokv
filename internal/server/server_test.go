@@ -1,4 +1,4 @@
-package mokv_test
+package server_test
 
 import (
 	"bytes"
@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dynamic-calm/mokv"
 	"github.com/dynamic-calm/mokv/api"
 	"github.com/dynamic-calm/mokv/config"
 	"github.com/dynamic-calm/mokv/internal/auth"
+	"github.com/dynamic-calm/mokv/internal/server"
 	"github.com/dynamic-calm/mokv/internal/store"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -48,16 +48,16 @@ func TestAPI(t *testing.T) {
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
+	srv := server.New(st, authorizer, grpc.Creds(serverCreds))
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
 		ready <- true
-		if err := server.Serve(listener); err != nil {
+		if err := srv.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
 		}
 	}()
-	defer server.Stop()
+	defer srv.Stop()
 
 	<-ready
 
@@ -130,7 +130,7 @@ func TestStream(t *testing.T) {
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
+	server := server.New(st, authorizer, grpc.Creds(serverCreds))
 	go func() {
 		if err := server.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
@@ -230,7 +230,7 @@ func TestListErrors(t *testing.T) {
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
+	server := server.New(st, authorizer, grpc.Creds(serverCreds))
 	go func() {
 		if err := server.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
@@ -332,7 +332,7 @@ func TestConcurrency(t *testing.T) {
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
+	server := server.New(st, authorizer, grpc.Creds(serverCreds))
 	go func() {
 		if err := server.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
@@ -421,7 +421,7 @@ func TestAuthorization(t *testing.T) {
 
 	serverCreds := credentials.NewTLS(serverTLSConfig)
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := mokv.NewServer(st, authorizer, grpc.Creds(serverCreds))
+	server := server.New(st, authorizer, grpc.Creds(serverCreds))
 
 	go func() {
 		if err := server.Serve(listener); err != nil {

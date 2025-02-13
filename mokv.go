@@ -18,6 +18,7 @@ import (
 	"github.com/dynamic-calm/mokv/internal/auth"
 	"github.com/dynamic-calm/mokv/internal/discovery"
 	"github.com/dynamic-calm/mokv/internal/kv"
+	"github.com/dynamic-calm/mokv/internal/server"
 	"github.com/dynamic-calm/mokv/internal/store"
 	"github.com/hashicorp/raft"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -172,7 +173,7 @@ func (r *MOKV) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 	r.kv = kv
 
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := NewServer(kv, authorizer, serverOpts...)
+	server := server.New(kv, authorizer, serverOpts...)
 	grpcLn := mux.Match(cmux.Any())
 
 	errc := make(chan error, 1)

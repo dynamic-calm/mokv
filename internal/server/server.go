@@ -1,4 +1,4 @@
-package mokv
+package server
 
 import (
 	"context"
@@ -53,7 +53,7 @@ func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
 	return nil, fmt.Errorf("kv store does not support getting servers")
 }
 
-func NewServer(KV kv.KVI, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
+func New(KV kv.KVI, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 
 	logOpts := []logging.Option{
