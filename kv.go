@@ -224,6 +224,10 @@ func (kv *KV) setupRaft(dataDir string) error {
 
 	config := raft.DefaultConfig()
 	config.LocalID = kv.cfg.Raft.LocalID
+	config.HeartbeatTimeout = 1000 * time.Millisecond
+	config.ElectionTimeout = 1000 * time.Millisecond
+	config.LeaderLeaseTimeout = 500 * time.Millisecond
+	config.CommitTimeout = 200 * time.Millisecond
 
 	kv.raft, err = raft.NewRaft(
 		config,

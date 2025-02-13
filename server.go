@@ -3,13 +3,18 @@ package mokv
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"os"
+	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/mateopresacastro/mokv/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	status "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -48,12 +53,20 @@ func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
 }
 
 func NewServer(KV KVI, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+
+	logOpts := []logging.Option{
+		logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
+	}
+
 	// Middleware for streaming and unary requests
 	opts = append(opts, grpc.StreamInterceptor(
 		grpc_middleware.ChainStreamServer(
+			logging.StreamServerInterceptor(interceptorLogger(logger), logOpts...),
 			grpc_auth.StreamServerInterceptor(authenticate),
 		),
 	), grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
+		logging.UnaryServerInterceptor(interceptorLogger(logger), logOpts...),
 		grpc_auth.UnaryServerInterceptor(authenticate),
 	)))
 
@@ -161,4 +174,75 @@ func authenticate(ctx context.Context) (context.Context, error) {
 	subject := tlsInfo.State.VerifiedChains[0][0].Subject.CommonName
 	ctx = context.WithValue(ctx, subjectContextKey{}, subject)
 	return ctx, nil
+}
+
+func loggerInterceptor(
+	ctx context.Context,
+	req any,
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler,
+) (any, error) {
+	start := time.Now()
+
+	// Extract peer information
+	peer, _ := peer.FromContext(ctx)
+	peerAddr := "unknown"
+	if peer != nil {
+		peerAddr = peer.Addr.String()
+	}
+
+	// Extract metadata
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		md = metadata.New(nil)
+	}
+
+	// Extract subject from context
+	sub, _ := ctx.Value(subjectContextKey{}).(string)
+
+	// Create logger with request context
+	reqLogger := slog.With(
+		"method", info.FullMethod,
+		"peer_address", peerAddr,
+		"subject", sub,
+		"user_agent", firstOrEmpty(md.Get("user-agent")),
+		"request_id", firstOrEmpty(md.Get("x-request-id")),
+	)
+
+	reqLogger.Info("handling request")
+
+	// Call the handler
+	resp, err := handler(ctx, req)
+
+	// Calculate duration
+	duration := time.Since(start)
+
+	// Log the result
+	if err != nil {
+		st, _ := status.FromError(err)
+		reqLogger.Error("request failed",
+			"code", st.Code(),
+			"error", err.Error(),
+			"duration_ms", duration.Milliseconds(),
+		)
+	} else {
+		reqLogger.Info("request completed",
+			"duration_ms", duration.Milliseconds(),
+		)
+	}
+
+	return resp, err
+}
+
+func firstOrEmpty(values []string) string {
+	if len(values) > 0 {
+		return values[0]
+	}
+	return ""
+}
+
+func interceptorLogger(l *slog.Logger) logging.Logger {
+	return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
+		l.Log(ctx, slog.Level(lvl), msg, fields...)
+	})
 }

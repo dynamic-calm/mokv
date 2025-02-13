@@ -3,6 +3,7 @@ package mokv
 import (
 	"log/slog"
 	"net"
+	"time"
 
 	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/serf/serf"
@@ -112,10 +113,18 @@ func (m *Membership) handleJoin(member serf.Member) {
 }
 
 func (m *Membership) handleLeave(member serf.Member) {
+	slog.Info("handling leave event",
+		"member_name", member.Name,
+		"member_addr", member.Addr.String())
+
 	err := m.handler.Leave(member.Name)
 	if err != nil {
-		slog.Error("failed to leave", "member", member)
+		slog.Error("failed to process leave",
+			"error", err,
+			"member", member.Name)
 	}
+
+	time.Sleep(1 * time.Second)
 }
 
 func (m *Membership) isLocal(member serf.Member) bool {

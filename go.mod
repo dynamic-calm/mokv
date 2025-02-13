@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/casbin/casbin/v2 v2.103.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
+	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.2.0
 	github.com/hashicorp/memberlist v0.5.2
 	github.com/hashicorp/raft v1.7.2
 	github.com/hashicorp/raft-boltdb v0.0.0-20250113192317-e8660f88bcc9
