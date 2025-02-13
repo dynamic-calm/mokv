@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/dynamic-calm/mokv"
-	"github.com/dynamic-calm/mokv/api"
 	"github.com/dynamic-calm/mokv/config"
+	"github.com/dynamic-calm/mokv/internal/api"
 	"github.com/dynamic-calm/mokv/internal/discovery"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"

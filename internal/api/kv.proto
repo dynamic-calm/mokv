@@ -4,7 +4,7 @@ import "google/protobuf/empty.proto";
 
 package api;
 
-option go_package = "github.com/dynamic-calm/mokv/api";
+option go_package = "github.com/dynamic-calm/mokv/internal/api";
 
 message GetRequest {
     string key = 1;
