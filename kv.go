@@ -148,10 +148,6 @@ func (kv *KV) Join(id, addr string) error {
 		return fmt.Errorf("failed to add voter: %w", err)
 	}
 
-	if err := kv.WaitForLeader(3 * time.Second); err != nil {
-		return fmt.Errorf("failed waiting for leader after join: %w", err)
-	}
-
 	slog.Info("successfully added voter", "id", id)
 	return nil
 }

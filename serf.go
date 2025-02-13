@@ -3,7 +3,6 @@ package mokv
 import (
 	"log/slog"
 	"net"
-	"time"
 
 	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/serf/serf"
@@ -123,8 +122,6 @@ func (m *Membership) handleLeave(member serf.Member) {
 			"error", err,
 			"member", member.Name)
 	}
-
-	time.Sleep(1 * time.Second)
 }
 
 func (m *Membership) isLocal(member serf.Member) bool {
