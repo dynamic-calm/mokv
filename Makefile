@@ -71,8 +71,8 @@ perf-set:
 	--key ~/.mokv/root-client-key.pem \
 	--cacert ~/.mokv/ca.pem \
 	-d '{"key":"test-key","value":"dGVzdC12YWx1ZQ=="}' \
-	-n 20000 \
-	-c 100 \
+	-n 100000 \
+	-c 10 \
 	localhost:8400
 
 .PHONY: perf-get
@@ -82,6 +82,7 @@ perf-get:
 	--cert ~/.mokv/root-client.pem \
 	--key ~/.mokv/root-client-key.pem \
 	--cacert ~/.mokv/ca.pem \
+	--async \
 	-d '{"key":"test-key"}' \
 	-n 100000 \
 	-c 10 \

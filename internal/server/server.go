@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/dynamic-calm/mokv/internal/api"
+	"github.com/dynamic-calm/mokv/api"
 	"github.com/dynamic-calm/mokv/internal/kv"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
@@ -98,8 +98,10 @@ func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetRespon
 	if err != nil {
 		return nil, err
 	}
+
 	err = s.KV.Set(req.Key, req.Value)
 	if err != nil {
+		slog.Error("ee", "err", err)
 		return &api.SetResponse{Ok: false}, status.New(codes.Internal, "something went wrong storing data").Err()
 	}
 	return &api.SetResponse{Ok: true}, nil
