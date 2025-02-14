@@ -376,7 +376,6 @@ func (fsm *fsm) Apply(log *raft.Log) any {
 	if len(log.Data) > 4 {
 		var numOps uint32
 		if err := binary.Read(buf, binary.LittleEndian, &numOps); err == nil {
-			// This is a batch operation
 			var errors []error
 
 			for i := uint32(0); i < numOps; i++ {
@@ -410,7 +409,6 @@ func (fsm *fsm) Apply(log *raft.Log) any {
 		}
 	}
 
-	// Fallback to single operation handling
 	reqType := RequestType(log.Data[0])
 	switch reqType {
 	case SetRequestType:
@@ -420,6 +418,7 @@ func (fsm *fsm) Apply(log *raft.Log) any {
 	}
 	return nil
 }
+
 func (fsm *fsm) applySet(b []byte) any {
 	var req api.SetRequest
 	err := proto.Unmarshal(b, &req)
