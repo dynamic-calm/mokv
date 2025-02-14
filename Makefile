@@ -63,3 +63,26 @@ cicd: compile gencert test
 build:
 	go build -o bin/mokv ./cmd/mokv/main.go
 
+.PHONY: perf-set
+perf-set:
+	ghz --proto ./internal/api/kv.proto \
+	--call api.KV.Set \
+	--cert ~/.mokv/root-client.pem \
+	--key ~/.mokv/root-client-key.pem \
+	--cacert ~/.mokv/ca.pem \
+	-d '{"key":"test-key","value":"dGVzdC12YWx1ZQ=="}' \
+	-n 20000 \
+	-c 100 \
+	localhost:8400
+
+.PHONY: perf-get
+perf-get:
+	ghz --proto ./internal/api/kv.proto \
+	--call api.KV.Get \
+	--cert ~/.mokv/root-client.pem \
+	--key ~/.mokv/root-client-key.pem \
+	--cacert ~/.mokv/ca.pem \
+	-d '{"key":"test-key"}' \
+	-n 100000 \
+	-c 10 \
+	localhost:8400

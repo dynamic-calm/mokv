@@ -6,9 +6,11 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os/signal"
 	"strconv"
 	"syscall"
@@ -123,6 +125,10 @@ func (r *MOKV) setupMetricsServer(ctx context.Context) (<-chan error, error) {
 }
 
 func (r *MOKV) setupGRPCServer(ctx context.Context) (<-chan error, error) {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
 	port := strconv.Itoa(r.cfg.RPCPort)
 	listener, err := net.Listen("tcp", "127.0.0.1:"+port)
 	if err != nil {
