@@ -1,4 +1,4 @@
-# mökv: Distributed In-Memory Key-Value Store
+# mökv
 
 `mökv` is a distributed, in-memory key-value store. It utilizes Raft for consensus, gRPC for communication, and TLS for security.
 
