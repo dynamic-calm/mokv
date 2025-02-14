@@ -1,14 +1,14 @@
 # mökv
 
-`mökv` is a distributed, in-memory key-value store. It utilizes Raft for consensus, gRPC for communication, and TLS for security.
+`mökv` is a distributed, in-memory key-value store. It utilizes [`Raft`](https://github.com/hashicorp/raft) for consensus, [`serf`](https://github.com/hashicorp/serf) for discvoery, [`gRPC`](https://github.com/grpc/grpc-go) for communication, and `TLS` for security.
 
 ## Features
 
 - **Distributed Architecture:** Data is replicated across multiple nodes for fault tolerance.
 - **In-Memory Storage:** Provides fast read and write operations.
-- **Raft Consensus:** Ensures data consistency across the cluster.
-- **gRPC Interface:** Offers a well-defined API for interacting with the store.
-- **TLS Encryption:** Secures communication between nodes and clients.
+- **`Raft` Consensus:** Ensures data consistency across the cluster.
+- **`gRPC` Interface:** Offers a well-defined API for interacting with the store.
+- **`TLS` Encryption:** Secures communication between nodes and clients.
 - **Access Control:** Uses Casbin for authorization, enabling fine-grained control over data access.
 - **Metrics:** Exposes Prometheus metrics for monitoring cluster health and performance.
 - **Service Discovery:** Uses Serf for automatic node discovery and membership management.
@@ -20,9 +20,9 @@ To run `mökv`:
 
 ### Prerequisites
 
-- [Go](https://go.dev/dl/)
-- [cfssl](https://github.com/cloudflare/cfssl) (for generating TLS certificates)
-- [ghz](https://ghz.sh/) (for performance testing. optional)
+- [`Go`](https://go.dev/dl/)
+- [`cfssl`](https://github.com/cloudflare/cfssl) (for generating `TLS` certificates)
+- [`ghz`](https://ghz.sh/) (for performance testing. Optional)
 
 ### Installation
 
@@ -39,7 +39,7 @@ To run `mökv`:
    make gencert
    ```
 
-   This command uses `cfssl` to generate the necessary TLS certificates in the `$HOME/.mokv` directory.
+   This command uses `cfssl` to generate the necessary `TLS` certificates in the `$HOME/.mokv` directory.
 
 3. **Compile the code:**
 
@@ -104,13 +104,3 @@ service KV {
     rpc GetServers(google.protobuf.Empty) returns (GetServersResponse){}
 }
 ```
-
-## Architecture Overview
-
-`mökv` consists of the following components:
-
-- **gRPC Server:** Handles client requests for setting, getting, deleting, and listing keys.
-- **Raft:** Implements a distributed consensus algorithm to ensure data consistency across the cluster. The Raft log is persisted using BoltDB.
-- **In-Memory Store:** Provides fast access to key-value data.
-- **Serf:** Provides membership and failure detection.
-- **Casbin:** Provides Access Control
