@@ -93,7 +93,7 @@ metrics-port: 4000
 
 ## Usage
 
-`mökv` exposes a gRPC API defined in `internal/api/kv.proto`. You can use a gRPC client to interact with the store.
+`mökv` exposes a `gRPC` `API` defined in `internal/api/kv.proto`. You can use a `gRPC` client to interact with the store.
 
 ```proto
 service KV {
