@@ -55,7 +55,6 @@ func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
 
 func New(KV kv.KVI, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-
 	logOpts := []logging.Option{
 		logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
 	}
