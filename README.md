@@ -7,12 +7,12 @@
 - **Distributed Architecture:** Data is replicated across multiple nodes for fault tolerance.
 - **In-Memory Storage:** Provides fast read and write operations.
 - **`Raft` Consensus:** Ensures data consistency across the cluster.
-- **`gRPC` Interface:** Offers a well-defined API for interacting with the store.
+- **`gRPC` Interface:** Offers a well-defined `API` for interacting with the store.
 - **`TLS` Encryption:** Secures communication between nodes and clients.
-- **Access Control:** Uses Casbin for authorization, enabling fine-grained control over data access.
-- **Metrics:** Exposes Prometheus metrics for monitoring cluster health and performance.
-- **Service Discovery:** Uses Serf for automatic node discovery and membership management.
-- **Load Balancing:** Implements gRPC client-side load balancing, directing write operations to the leader and read operations to followers.
+- **Access Control:** Uses `Casbin` for authorization, enabling fine-grained control over data access.
+- **Metrics:** Exposes `Prometheus` metrics for monitoring cluster health and performance.
+- **Service Discovery:** Uses `serf` for automatic node discovery and membership management.
+- **Load Balancing:** Implements `gRPC` client-side load balancing, directing write operations to the leader and read operations to followers.
 
 ## Getting Started
 
