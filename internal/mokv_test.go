@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"path"
@@ -21,7 +20,6 @@ import (
 )
 
 func TestRunE2E(t *testing.T) {
-	// Create context with timeout
 	ctx := context.Background()
 
 	// Setup test data directory
@@ -60,7 +58,6 @@ func TestRunE2E(t *testing.T) {
 		t.Fatalf("peer TLS setup failed: %s", err)
 	}
 
-	// Create runner config
 	cfg := &mokv.Config{
 		DataDir:         testDir,
 		NodeName:        hostname,
@@ -84,6 +81,7 @@ func TestRunE2E(t *testing.T) {
 	}()
 
 	time.Sleep(3 * time.Second)
+
 	// Setup client TLS
 	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
 		CertFile:      config.RootClientCertFile,
@@ -107,8 +105,6 @@ func TestRunE2E(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// Create client and run tests
-	slog.Info("creating client")
 	client := api.NewKVClient(conn)
 
 	// Test Set operation
