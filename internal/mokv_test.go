@@ -74,8 +74,11 @@ func TestRunE2E(t *testing.T) {
 		PeerTLSConfig:   peerTLSConfig,
 	}
 
-	// Create and start runner
-	r := mokv.New(cfg, os.Getenv)
+	r, err := mokv.New(cfg, os.Getenv)
+	if err != nil {
+		t.Fatalf("failed to creating new mokv: %s", err)
+	}
+
 	go func() {
 		r.Run(ctx)
 	}()
