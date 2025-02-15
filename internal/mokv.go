@@ -61,7 +61,6 @@ type MOKV struct {
 }
 
 func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
-
 	// Initialize Prometheus exporter
 	exp, err := prometheus.New()
 	if err != nil {
