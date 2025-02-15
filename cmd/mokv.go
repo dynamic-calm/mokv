@@ -121,8 +121,12 @@ func (cli *cli) setupConfig(cmd *cobra.Command, args []string) error {
 
 func (cli *cli) run(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	r := mokv.New(cli.Config, os.Getenv)
-	if err := r.Run(ctx); err != nil {
+	mokv, err := mokv.New(cli.Config, os.Getenv)
+	if err != nil {
+		return err
+	}
+
+	if err := mokv.Listen(ctx); err != nil {
 		return err
 	}
 	return nil

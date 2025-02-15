@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net"
 	"net/http"
-	_ "net/http/pprof"
 	"os/signal"
 	"strconv"
 	"syscall"
@@ -27,6 +26,7 @@ import (
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/stats/opentelemetry"
@@ -53,110 +53,43 @@ type MOKV struct {
 	getEnv        GetEnv
 	kv            kv.KVI
 	meterProvider *metric.MeterProvider
+	grpcServer    *grpc.Server
+	metricsServer *http.Server
+	grpcLn        net.Listener
+	cmux          cmux.CMux
+	membership    *discovery.Membership
 }
 
-func New(cfg *Config, getEnv GetEnv) *MOKV {
-	return &MOKV{cfg: cfg, getEnv: getEnv}
-}
-
-func (r *MOKV) Run(ctx context.Context) error {
-	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	// This deferred cancel function will signal all goroutines to exit
-	// on all return paths.
-	defer cancel()
-
-	mErrc, err := r.setupMetricsServer(ctx)
-	if err != nil {
-		return err
-	}
-	grpcErrc, err := r.setupGRPCServer(ctx)
-	if err != nil {
-		return err
-	}
-	err = r.setupMemership(ctx)
-	if err != nil {
-		return err
-	}
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-mErrc:
-		return err
-	case err := <-grpcErrc:
-		return err
-	}
-}
-
-func (r *MOKV) setupMetricsServer(ctx context.Context) (<-chan error, error) {
-	errc := make(chan error, 1)
+func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
+	// Initialize Prometheus exporter
 	exp, err := prometheus.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start prometheus exporter: %w", err)
 	}
+
 	provider := metric.NewMeterProvider(metric.WithReader(exp))
-	// We need to do this outside of the goroutine so it happends syncronously.
-	// The gRPC server depends on this provider.
-	r.meterProvider = provider
-	srv := &http.Server{
-		Addr:    ":" + strconv.Itoa(r.cfg.MetricsPort),
-		Handler: promhttp.Handler(),
-	}
-	go func() {
-		defer close(errc)
-		defer provider.Shutdown(ctx)
 
-		go func() {
-			slog.Info("metrics server listening...", "port", r.cfg.MetricsPort)
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				errc <- fmt.Errorf("metrics server failed: %w", err)
-			}
-		}()
-
-		// Wait for context cancelation. Then do shutdown.
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			slog.Error("error shutting down metrics server", "err", err)
-		}
-	}()
-	return errc, nil
-}
-
-func (r *MOKV) setupGRPCServer(ctx context.Context) (<-chan error, error) {
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
-
-	port := strconv.Itoa(r.cfg.RPCPort)
-	listener, err := net.Listen("tcp", "127.0.0.1:"+port)
-	if err != nil {
-		return nil, fmt.Errorf("failed to listen: %w", err)
-	}
-
-	serverOpts := []grpc.ServerOption{
-		grpc.Creds(credentials.NewTLS(r.cfg.ServerTLSConfig)),
-		opentelemetry.ServerOption(
-			opentelemetry.Options{
-				MetricsOptions: opentelemetry.MetricsOptions{
-					MeterProvider: r.meterProvider,
-				},
-			},
-		),
-	}
-
-	mux := cmux.New(listener)
-	kvCFG := &kv.KVConfig{DataDir: r.cfg.DataDir}
-	kvCFG.Raft.BindAddr = r.cfg.BindAddr
+	// Configure KV store
+	port := strconv.Itoa(cfg.RPCPort)
+	kvCFG := &kv.KVConfig{DataDir: cfg.DataDir}
+	kvCFG.Raft.BindAddr = cfg.BindAddr
 	kvCFG.Raft.RPCPort = port
-	kvCFG.Raft.LocalID = raft.ServerID(r.cfg.NodeName)
-	kvCFG.Raft.Bootstrap = r.cfg.Bootstrap
+	kvCFG.Raft.LocalID = raft.ServerID(cfg.NodeName)
+	kvCFG.Raft.Bootstrap = cfg.Bootstrap
 
-	// Create a Raft listener for incoming connections that
-	// have RaftRPC as first byte. This way we can multiplex
-	// on the same port regular connections and raft ones.
-	raftLn := mux.Match(func(reader io.Reader) bool {
+	// Setup network listener
+	rpcAddr := net.JoinHostPort("127.0.0.1", port)
+	listener, err := net.Listen("tcp", rpcAddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create listener: %w", err)
+	}
+
+	// Setup connection multiplexer
+	myCmux := cmux.New(listener)
+	grpcLn := myCmux.Match(cmux.Any())
+
+	// Configure Raft listener
+	raftLn := myCmux.Match(func(reader io.Reader) bool {
 		b := make([]byte, 1)
 		if _, err := reader.Read(b); err != nil {
 			return false
@@ -164,86 +97,140 @@ func (r *MOKV) setupGRPCServer(ctx context.Context) (<-chan error, error) {
 		return bytes.Compare(b, []byte{byte(kv.RaftRPC)}) == 0
 	})
 
+	// Setup Raft stream layer
 	kvCFG.Raft.StreamLayer = *kv.NewStreamLayer(
 		raftLn,
-		r.cfg.ServerTLSConfig,
-		r.cfg.PeerTLSConfig,
+		cfg.ServerTLSConfig,
+		cfg.PeerTLSConfig,
 	)
 
+	// Initialize store and KV
 	store := store.New()
 	kv, err := kv.New(store, kvCFG)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create KV store: %w", err)
 	}
 
-	r.kv = kv
+	// Configure gRPC server
+	serverOpts := []grpc.ServerOption{
+		grpc.Creds(credentials.NewTLS(cfg.ServerTLSConfig)),
+		opentelemetry.ServerOption(
+			opentelemetry.Options{
+				MetricsOptions: opentelemetry.MetricsOptions{
+					MeterProvider: provider,
+				},
+			},
+		),
+	}
 
+	// Setup authorization
 	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := server.New(kv, authorizer, serverOpts...)
-	grpcLn := mux.Match(cmux.Any())
+	grpcServer := server.New(kv, authorizer, serverOpts...)
 
-	errc := make(chan error, 1)
-
-	go func() {
-		defer close(errc)
-		grpcec := make(chan error, 1)
-		go func() {
-			defer close(grpcec)
-			slog.Info("gRPC server listening...", "addr", listener.Addr())
-			if err := server.Serve(grpcLn); err != nil {
-				grpcec <- fmt.Errorf("gRPC server error: %w", err)
-			}
-		}()
-
-		muxec := make(chan error, 1)
-		go func() {
-			defer close(muxec)
-			slog.Info("multiplexer listening...")
-			if err := mux.Serve(); err != nil {
-				muxec <- fmt.Errorf("multiplexer server error: %w", err)
-			}
-		}()
-
-		select {
-		case <-ctx.Done():
-			mux.Close()
-			server.GracefulStop()
-			listener.Close()
-			slog.Info("Shutdown complete for gRPC server")
-		case err := <-grpcec:
-			errc <- err
-		case err := <-muxec:
-			errc <- err
-		}
-	}()
-
-	return errc, nil
-}
-
-func (r *MOKV) setupMemership(ctx context.Context) error {
-	distributekv, ok := r.kv.(*kv.KV)
-	if !ok {
-		return fmt.Errorf("failed to convert kv to *kv.Distributekv")
-	}
-	rpcAddr := fmt.Sprintf("127.0.0.1:%d", r.cfg.RPCPort)
-	membership, err := discovery.NewMembership(distributekv, discovery.MembershipConfig{
-		NodeName: r.cfg.NodeName,
-		BindAddr: r.cfg.BindAddr,
+	// Initialize membership
+	membership, err := discovery.NewMembership(kv, discovery.MembershipConfig{
+		NodeName: cfg.NodeName,
+		BindAddr: cfg.BindAddr,
 		Tags: map[string]string{
 			"rpc_addr": rpcAddr,
 		},
-		StartJoinAddrs: r.cfg.StartJoinAddrs,
+		StartJoinAddrs: cfg.StartJoinAddrs,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create membership: %w", err)
+		return nil, fmt.Errorf("failed to create membership: %w", err)
 	}
 
+	// Setup metrics server
+	metricsAddr := fmt.Sprintf(":%d", cfg.MetricsPort)
+	metricsServer := &http.Server{
+		Addr:    metricsAddr,
+		Handler: promhttp.Handler(),
+	}
+
+	return &MOKV{
+		cfg:           cfg,
+		getEnv:        getEnv,
+		meterProvider: provider,
+		kv:            kv,
+		grpcServer:    grpcServer,
+		metricsServer: metricsServer,
+		grpcLn:        grpcLn,
+		membership:    membership,
+		cmux:          myCmux,
+	}, nil
+}
+
+func (m *MOKV) Listen(ctx context.Context) error {
+	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Start metrics server
+	g.Go(func() error {
+		slog.Info("metrics server listening...", "addr", m.metricsServer.Addr)
+		if err := m.metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("metrics server failed: %w", err)
+		}
+		return nil
+	})
+
+	// Start gRPC server
+	g.Go(func() error {
+		slog.Info("gRPC server listening...", "addr", m.grpcLn.Addr())
+		if err := m.grpcServer.Serve(m.grpcLn); err != nil {
+			return fmt.Errorf("gRPC server error: %w", err)
+		}
+		return nil
+	})
+
+	// Start Multiplexer
+	g.Go(func() error {
+		slog.Info("multiplexer listening...")
+		if err := m.cmux.Serve(); err != nil {
+			return fmt.Errorf("multiplexer server error: %w", err)
+		}
+		return nil
+	})
+
+	// Handle shutdown
 	go func() {
 		<-ctx.Done()
-		if err := membership.Leave(); err != nil {
-			slog.Error("failed to leave", "error", err)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := m.close(shutdownCtx); err != nil {
+			slog.Error("shutdown error", "error", err)
 		}
 	}()
+
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("server error: %w", err)
+	}
+
+	return nil
+}
+
+func (r *MOKV) close(ctx context.Context) error {
+	var errs []error
+
+	if err := r.metricsServer.Shutdown(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("metrics server shutdown error: %w", err))
+	}
+
+	if err := r.membership.Leave(); err != nil {
+		errs = append(errs, fmt.Errorf("membership leave error: %w", err))
+	}
+
+	r.grpcServer.GracefulStop()
+
+	if err := r.meterProvider.Shutdown(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("meter provider shutdown error: %w", err))
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("close errors: %v", errs)
+	}
 
 	return nil
 }
