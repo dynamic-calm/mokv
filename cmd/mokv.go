@@ -126,7 +126,7 @@ func (cli *cli) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := mokv.Run(ctx); err != nil {
+	if err := mokv.Listen(ctx); err != nil {
 		return err
 	}
 	return nil

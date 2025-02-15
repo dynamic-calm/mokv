@@ -11,7 +11,7 @@ compile:
 
 .PHONY: test
 test: $(CONFIG_PATH)/model.conf $(CONFIG_PATH)/policy.csv
-	go test -cover ./...
+	go test -cover -v ./...
 
 .PHONY: start
 start:
