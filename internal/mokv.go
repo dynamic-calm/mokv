@@ -204,11 +204,7 @@ func (m *MOKV) Listen(ctx context.Context) error {
 		}
 	}()
 
-	if err := g.Wait(); err != nil {
-		return fmt.Errorf("server error: %w", err)
-	}
-
-	return nil
+	return g.Wait()
 }
 
 func (r *MOKV) close(ctx context.Context) error {
