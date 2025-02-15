@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/dynamic-calm/mokv/api"
+	"github.com/dynamic-calm/mokv/internal/api"
 	"github.com/dynamic-calm/mokv/internal/kv"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"

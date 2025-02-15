@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dynamic-calm/mokv/config"
 	"github.com/dynamic-calm/mokv/internal/auth"
+	"github.com/dynamic-calm/mokv/internal/config"
 	"github.com/dynamic-calm/mokv/internal/discovery"
 	"github.com/dynamic-calm/mokv/internal/kv"
 	"github.com/dynamic-calm/mokv/internal/server"

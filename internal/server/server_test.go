@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dynamic-calm/mokv/api"
-	"github.com/dynamic-calm/mokv/config"
+	"github.com/dynamic-calm/mokv/internal/api"
 	"github.com/dynamic-calm/mokv/internal/auth"
+	"github.com/dynamic-calm/mokv/internal/config"
 	"github.com/dynamic-calm/mokv/internal/server"
 	"github.com/dynamic-calm/mokv/internal/store"
 	grpc "google.golang.org/grpc"

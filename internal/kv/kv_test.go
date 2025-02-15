@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dynamic-calm/mokv/config"
+	"github.com/dynamic-calm/mokv/internal/config"
 	"github.com/dynamic-calm/mokv/internal/kv"
 	"github.com/dynamic-calm/mokv/internal/store"
 	"github.com/soheilhy/cmux"
