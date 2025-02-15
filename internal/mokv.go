@@ -82,7 +82,7 @@ func (r *MOKV) Run(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case err := <-mErrc:
-		return err // TODO: think about what to do when metrics server crashes.
+		return err
 	case err := <-grpcErrc:
 		return err
 	}
