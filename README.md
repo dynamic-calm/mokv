@@ -127,3 +127,23 @@ service KV {
 
   - Snapshotting: The `FSM's` `Snapshot` method creates a snapshot of the current in-memory state.
   - Restoring State: After a crash, the `FSM's` `Restore` method loads the latest snapshot and replays any subsequent log entries, reconstructing the in-memory `kv.store` to a consistent state. This entire process happens automatically when `setupRaft` is called during startup.
+
+## gRPC API: Communication, Security, and Load Balancing
+
+`mökv` uses gRPC for efficient client-cluster communication, secured with TLS client certificates.
+
+- API Definition: The [`internal/api/kv.proto`](internal/api/kv.proto) file defines the `KV` service (methods: `Get`, `Set`, `Delete`, `List`, `GetServers`).
+
+- Server: Implemented in [`internal/server/server.go`](internal/server/server.go).
+
+- Interceptors:
+
+  - Logging: Logs requests for monitoring.
+  - Authentication: Uses TLS client certificates; the certificate's Common Name (CN) is the username for authorization.
+
+- Authorization (Casbin): The [`internal/auth/auth.go`](internal/auth/auth.go) enforces access control using Casbin, allowing actions (produce/consume) based on the authenticated user.
+
+- Client-Side Load Balancing (Name Resolution and Picker):
+
+  - Name Resolver ([`internal/discovery/resolver.go`](internal/discovery/resolver.go)): Discovers `mökv` nodes using `GetServers` and adds attributes indicating the Leader.
+  - Picker ([`internal/discovery/picker.go`](internal/discovery/picker.go)): Routes `Set/Delete` (writes) to the Leader and `Get/List` (reads) to followers (randomly selected).
