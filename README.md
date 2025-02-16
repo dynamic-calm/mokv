@@ -128,7 +128,7 @@ service KV {
   - Snapshotting: The `FSM's` `Snapshot` method creates a snapshot of the current in-memory state.
   - Restoring State: After a crash, the `FSM's` `Restore` method loads the latest snapshot and replays any subsequent log entries, reconstructing the in-memory `kv.store` to a consistent state. This entire process happens automatically when `setupRaft` is called during startup.
 
-## gRPC API: Communication, Security, and Load Balancing
+## gRPC
 
 `mökv` uses gRPC for efficient client-cluster communication, secured with TLS client certificates.
 
