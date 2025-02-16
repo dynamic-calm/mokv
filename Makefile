@@ -71,7 +71,7 @@ perf-set:
 	--key ~/.mokv/root-client-key.pem \
 	--cacert ~/.mokv/ca.pem \
 	-d '{"key":"test-key","value":"dGVzdC12YWx1ZQ=="}' \
-	-n 100000 \
+	-n 10000 \
 	-c 10 \
 	localhost:8400
 

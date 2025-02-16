@@ -86,7 +86,6 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 
 	// Setup connection multiplexer
 	myCmux := cmux.New(listener)
-	grpcLn := myCmux.Match(cmux.Any())
 
 	// Configure Raft listener
 	raftLn := myCmux.Match(func(reader io.Reader) bool {
@@ -96,6 +95,7 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 		}
 		return bytes.Compare(b, []byte{byte(kv.RaftRPC)}) == 0
 	})
+	grpcLn := myCmux.Match(cmux.Any())
 
 	// Setup Raft stream layer
 	kvCFG.Raft.StreamLayer = *kv.NewStreamLayer(
