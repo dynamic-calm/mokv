@@ -92,7 +92,7 @@ metrics-port: 4000
    bin/mokv --config-file example/config2.yaml  # Example config for the second node
    ```
 
-   Refer to `example/start_nodes.sh` for a convenient script to start a cluster.
+   Refer to [`example/start_nodes.sh`](example/start_nodes.sh) for a convenient script to start a cluster.
 
 ## Usage
 
