@@ -112,18 +112,18 @@ service KV {
 
 `mökv` combines `Serf` for node discovery and `Raft` for consistent data replication. Here's how the key components interact:
 
-- Serf: Dynamic Membership: `Serf` uses `UDP` to monitor cluster membership. When a node joins, the `serf.EventMemberJoin` event triggers the `Join` function ([`internal/kv/kv.go`](/internal/kv/kv.go)), adding the node as a `Raft` voter. This ensures the Raft cluster reflects the current active nodes.
+- `Serf`: Dynamic Membership: `Serf` uses `UDP` to monitor cluster membership. When a node joins, the `serf.EventMemberJoin` event triggers the `Join` function ([`internal/kv/kv.go`](/internal/kv/kv.go)), adding the node as a `Raft` voter. This ensures the `Raft` cluster reflects the current active nodes.
 
-- Raft: Consensus and the FSM: `Raft` guarantees data consistency. One node is `Leader`, handling all write operations. Write operations become Raft log entries, replicated to `Followers`. The _Finite State Machine (FSM)_ is central to Raft's operation:
+- `Raft`: Consensus and the FSM: `Raft` guarantees data consistency. One node is `Leader`, handling all write operations. Write operations become `Raft` log entries, replicated to `Followers`. The _Finite State Machine (`FSM`)_ is the core of `Raft's` operation:
 
-  - Applying Log Entries: When a log entry is committed (acknowledged by a quorum), the `Apply` method of the FSM (in `internal/kv/kv.go`) is invoked. The `Apply` method handles different request types:
+  - Applying Log Entries: When a log entry is committed (acknowledged by a quorum), the `Apply` method of the `FSM` (in `internal/kv/kv.go`) is invoked. The `Apply` method handles different request types:
 
     - Set Request: Updates the in-memory key-value store (`kv.store`) with the new key-value pair.
     - Delete Request: Removes the specified key from the in-memory store.
 
   - Data Flow for Writes: `gRPC` -> `Raft Leader` -> `Log Entry` -> `Replication to Followers` -> `FSM Apply` -> `kv.store`.
 
-- Persistence (raft-boltdb): `mökv` uses `raft-boltdb` to persist Raft's log, stable state, and periodic snapshots to disk. This enables recovery after node failures.
+- Persistence (`raft-boltdb`): `mökv` uses `raft-boltdb` to persist Raft's log, stable state, and periodic snapshots to disk. This enables recovery after node failures.
 
-  - Snapshotting: The FSM's `Snapshot` method creates a snapshot of the current in-memory state.
-  - Restoring State: After a crash, the FSM's `Restore` method loads the latest snapshot and replays any subsequent log entries, reconstructing the in-memory `kv.store` to a consistent state. This entire process happens automatically when `setupRaft` is called during startup.
+  - Snapshotting: The `FSM's` `Snapshot` method creates a snapshot of the current in-memory state.
+  - Restoring State: After a crash, the `FSM's` `Restore` method loads the latest snapshot and replays any subsequent log entries, reconstructing the in-memory `kv.store` to a consistent state. This entire process happens automatically when `setupRaft` is called during startup.
