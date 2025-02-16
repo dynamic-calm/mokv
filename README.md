@@ -5,20 +5,6 @@
 > [!NOTE]
 > This is a project to learn more about distributed systems and `Go`.
 
-```mermaid
-graph TD
-    Client[Client] --> LB[Load Balancer]
-    LB --> Leader[Leader Node]
-    LB --> Follower1[Follower Node 1]
-    LB --> Follower2[Follower Node 2]
-    Leader --> |Raft| Follower1
-    Leader --> |Raft| Follower2
-    subgraph "Node Discovery"
-        Leader --> |Serf| Follower1
-        Leader --> |Serf| Follower2
-    end
-```
-
 ## Features
 
 - Distributed Architecture: Data is replicated across multiple nodes for fault tolerance.
