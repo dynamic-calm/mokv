@@ -6,81 +6,17 @@
 > This is a project to learn more about distributed systems and `Go`.
 
 ```mermaid
-graph LR
-    subgraph gRPC Client
-        A[gRPC Client App] --> B(Name Resolver);
-        B --> C{Address List};
-        C --> D(Picker);
-        D --> E[SubConn 1];
-        D --> F[SubConn 2];
-        D --> G[SubConn N];
+graph TD
+    Client[Client] --> LB[Load Balancer]
+    LB --> Leader[Leader Node]
+    LB --> Follower1[Follower Node 1]
+    LB --> Follower2[Follower Node 2]
+    Leader --> |Raft| Follower1
+    Leader --> |Raft| Follower2
+    subgraph "Node Discovery"
+        Leader --> |Serf| Follower1
+        Leader --> |Serf| Follower2
     end
-
-    subgraph mökv Nodes
-        H[Node 1] -- Serf --> I[Node 2];
-        I -- Serf --> J[Node N];
-
-        subgraph Raft Cluster
-            K[Node 1 (Leader)] -- Log Replication --> L[Node 2 (Follower)];
-            L -- Log Replication --> M[Node N (Follower)];
-
-            K -- FSM Apply --> N((kv.store));
-            L -- FSM Apply --> O((kv.store));
-            M -- FSM Apply --> P((kv.store));
-
-            N -. BoltDB Persistence .- Q[Disk];
-            O -. BoltDB Persistence .- R[Disk];
-            P -. BoltDB Persistence .- S[Disk];
-        end
-    end
-
-    subgraph Operations
-        Style T fill:#f9f,stroke:#333,stroke-width:2px
-        subgraph Write Operations
-          T[gRPC Set/Delete] --> K
-          T --> M
-          T --> L
-        end
-
-        U[gRPC Get/List] --> D
-        D --> E
-        D --> F
-        D --> G
-
-        E --> L
-        F --> M
-        G --> K
-        G --> L
-
-    end
-
-    B -- GetServers gRPC --> K
-    B --> L
-    B --> M
-
-
-    style A fill:#ccf,stroke:#333,stroke-width:2px
-    style K fill:#cfc,stroke:#333,stroke-width:2px
-    style L fill:#ccf,stroke:#333,stroke-width:2px
-    style M fill:#ccf,stroke:#333,stroke-width:2px
-    style N fill:#ccf,stroke:#333,stroke-width:2px
-    style O fill:#ccf,stroke:#333,stroke-width:2px
-    style P fill:#ccf,stroke:#333,stroke-width:2px
-    style Q fill:#ccf,stroke:#333,stroke-width:2px
-    style R fill:#ccf,stroke:#333,stroke-width:2px
-    style S fill:#ccf,stroke:#333,stroke-width:2px
-
-   linkStyle 0 stroke:#333,stroke-width:2px,fill:none;
-    linkStyle 1 stroke:#333,stroke-width:1px,fill:none;
-     linkStyle 2 stroke:#333,stroke-width:2px,fill:none;
-         linkStyle 3 stroke:#333,stroke-width:2px,fill:none;
-         linkStyle 4 stroke:#333,stroke-width:2px,fill:none;
-         linkStyle 5 stroke:#333,stroke-width:2px,fill:none;
-         linkStyle 6 stroke:#333,stroke-width:2px,fill:none;
-        linkStyle 7 stroke:#333,stroke-width:2px,fill:none;
-         linkStyle 8 stroke:#333,stroke-width:2px,fill:none;
-         linkStyle 9 stroke:#333,stroke-width:2px,fill:none;
-         linkStyle 10 stroke:#333,stroke-width:2px,fill:none;
 ```
 
 ## Features
