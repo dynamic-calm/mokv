@@ -130,23 +130,23 @@ service KV {
 
 ## gRPC
 
-`mökv` uses gRPC for efficient communication between clients and the cluster, secured with TLS client certificates for authentication and Casbin for authorization.
+`mökv` uses `gRPC` for efficient communication between clients and the cluster, secured with `TLS` client certificates for authentication and Casbin for authorization.
 
-- API Definition: The core gRPC service, `KV`, is defined in [`internal/api/kv.proto`](internal/api/kv.proto), exposing methods like `Get`, `Set`, `Delete`, `List`, and `GetServers`.
+- API Definition: The core `gRPC` service, `KV`, is defined in [`internal/api/kv.proto`](internal/api/kv.proto), exposing methods like `Get`, `Set`, `Delete`, `List`, and `GetServers`.
 
-- gRPC Server: The server implementation resides in [`internal/server/server.go`](internal/server/server.go), handling gRPC requests.
+- `gRPC` Server: The server implementation resides in [`internal/server/server.go`](internal/server/server.go), handling `gRPC` requests.
 
-- Interceptors: gRPC Interceptors are used to handle:
+- Interceptors: `gRPC` Interceptors are used to handle:
 
   - Logging: Each incoming request is logged for monitoring.
-  - Authentication: Authenticates clients using TLS client certificates. The certificate's Common Name (CN) is extracted and used as the subject for authorization (see below). This is handled in the `authenticate` function in [`internal/server/server.go`](internal/server/server.go).
+  - Authentication: Authenticates clients using `TLS` client certificates. The certificate's Common Name (`CN`) is extracted and used as the subject for authorization (see below). This is handled in the `authenticate` function in [`internal/server/server.go`](internal/server/server.go).
 
-- Authorization (Casbin): The [`internal/auth/auth.go`](internal/auth/auth.go) enforces access control. Casbin determines if the authenticated user (identified by the CN) has permission to perform an action ("produce" for writes, "consume" for reads).
+- Authorization (`Casbin`): The [`internal/auth/auth.go`](internal/auth/auth.go) enforces access control. Casbin determines if the authenticated user (identified by the `CN`) has permission to perform an action ("produce" for writes, "consume" for reads).
 
 - Client-Side Load Balancing (Name Resolution and Picker): `mökv` uses client-side load balancing.
 
   - Name Resolver ([`internal/discovery/resolver.go`](internal/discovery/resolver.go)): The name resolver periodically calls `GetServers` to discover available `mökv` nodes and their roles (Leader/Follower). It updates the list of available servers with the `is_leader` attribute.
   - Picker ([`internal/discovery/picker.go`](internal/discovery/picker.go)): The Picker directs requests based on the operation type and the leader status of available connections:
 
-    - Writes (Set, Delete): These are routed to the _Leader_ node to ensure consistency.
-    - Reads (Get, List): These are balanced among available _Follower_ nodes for improved read performance.
+    - Writes (`Set`, `Delete`): These are routed to the _Leader_ node to ensure consistency.
+    - Reads (`Get`, `List`): These are balanced among available _Follower_ nodes for improved read performance.
