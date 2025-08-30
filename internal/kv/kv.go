@@ -59,14 +59,14 @@ type KVConfig struct {
 
 type KV struct {
 	cfg          *KVConfig
-	store        store.Store
+	store        store.Storer
 	raft         *raft.Raft
 	batchChan    chan *BatchOperation
 	batchSize    int
 	batchTimeout time.Duration
 }
 
-func New(store store.Store, cfg *KVConfig) (*KV, error) {
+func New(store store.Storer, cfg *KVConfig) (*KV, error) {
 	kv := &KV{
 		cfg:          cfg,
 		store:        store,
@@ -279,7 +279,7 @@ func (kv *KV) WaitForLeader(timeout time.Duration) error {
 }
 
 type fsm struct {
-	kv      store.Store
+	kv      store.Storer
 	dataDir string
 }
 

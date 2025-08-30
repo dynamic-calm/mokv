@@ -5,23 +5,23 @@ import (
 	"sync"
 )
 
-type Store interface {
+type Storer interface {
 	Get(key string) ([]byte, error)
 	Set(key string, value []byte) error
 	Delete(key string) error
 	List() <-chan []byte
 }
 
-type store struct {
+type Store struct {
 	db map[string][]byte
 	mu sync.RWMutex
 }
 
-func New() Store {
-	return &store{db: map[string][]byte{}}
+func New() *Store {
+	return &Store{db: map[string][]byte{}}
 }
 
-func (s *store) Get(key string) ([]byte, error) {
+func (s *Store) Get(key string) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	value, ok := s.db[key]
@@ -31,14 +31,14 @@ func (s *store) Get(key string) ([]byte, error) {
 	return value, nil
 }
 
-func (s *store) Set(key string, value []byte) error {
+func (s *Store) Set(key string, value []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.db[key] = value
 	return nil
 }
 
-func (s *store) Delete(key string) error {
+func (s *Store) Delete(key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, ok := s.db[key]
@@ -49,7 +49,7 @@ func (s *store) Delete(key string) error {
 	return nil
 }
 
-func (s *store) List() <-chan []byte {
+func (s *Store) List() <-chan []byte {
 	c := make(chan []byte)
 	s.mu.RLock()
 	go func() {

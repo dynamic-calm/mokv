@@ -93,7 +93,7 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 		if _, err := reader.Read(b); err != nil {
 			return false
 		}
-		return bytes.Compare(b, []byte{byte(kv.RaftRPC)}) == 0
+		return bytes.Equal(b, []byte{byte(kv.RaftRPC)})
 	})
 	grpcLn := myCmux.Match(cmux.Any())
 
