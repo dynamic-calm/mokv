@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"time"
 
 	"github.com/dynamic-calm/mokv/internal/api"
 	"github.com/dynamic-calm/mokv/internal/kv"
@@ -15,7 +14,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	status "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -176,64 +174,6 @@ func authenticate(ctx context.Context) (context.Context, error) {
 	subject := tlsInfo.State.VerifiedChains[0][0].Subject.CommonName
 	ctx = context.WithValue(ctx, subjectContextKey{}, subject)
 	return ctx, nil
-}
-
-func loggerInterceptor(
-	ctx context.Context,
-	req any,
-	info *grpc.UnaryServerInfo,
-	handler grpc.UnaryHandler,
-) (any, error) {
-	start := time.Now()
-
-	// Extract peer information
-	peer, _ := peer.FromContext(ctx)
-	peerAddr := "unknown"
-	if peer != nil {
-		peerAddr = peer.Addr.String()
-	}
-
-	// Extract metadata
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		md = metadata.New(nil)
-	}
-
-	// Extract subject from context
-	sub, _ := ctx.Value(subjectContextKey{}).(string)
-
-	// Create logger with request context
-	reqLogger := slog.With(
-		"method", info.FullMethod,
-		"peer_address", peerAddr,
-		"subject", sub,
-		"user_agent", firstOrEmpty(md.Get("user-agent")),
-		"request_id", firstOrEmpty(md.Get("x-request-id")),
-	)
-
-	reqLogger.Info("handling request")
-
-	// Call the handler
-	resp, err := handler(ctx, req)
-
-	// Calculate duration
-	duration := time.Since(start)
-
-	// Log the result
-	if err != nil {
-		st, _ := status.FromError(err)
-		reqLogger.Error("request failed",
-			"code", st.Code(),
-			"error", err.Error(),
-			"duration_ms", duration.Milliseconds(),
-		)
-	} else {
-		reqLogger.Info("request completed",
-			"duration_ms", duration.Milliseconds(),
-		)
-	}
-
-	return resp, err
 }
 
 func firstOrEmpty(values []string) string {

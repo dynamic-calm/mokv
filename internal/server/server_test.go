@@ -5,7 +5,6 @@ import (
 	"context"
 	"io"
 	"net"
-	"os"
 	"strconv"
 	"sync"
 	"testing"
@@ -23,10 +22,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
 func TestAPI(t *testing.T) {
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
