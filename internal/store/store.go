@@ -13,51 +13,45 @@ type Storer interface {
 }
 
 type Store struct {
-	db map[string][]byte
-	mu sync.RWMutex
+	m sync.Map
 }
 
 func New() *Store {
-	return &Store{db: map[string][]byte{}}
+	return &Store{}
 }
 
 func (s *Store) Get(key string) ([]byte, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	value, ok := s.db[key]
+	value, ok := s.m.Load(key)
 	if !ok {
 		return nil, errors.New("not found")
 	}
-	return value, nil
+
+	bytes, ok := value.([]byte)
+	if !ok {
+		return nil, errors.New("value is not of type []byte")
+	}
+	return bytes, nil
 }
 
 func (s *Store) Set(key string, value []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.db[key] = value
+	s.m.Store(key, value)
 	return nil
 }
 
 func (s *Store) Delete(key string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, ok := s.db[key]
-	if !ok {
-		return errors.New("not found")
-	}
-	delete(s.db, key)
+	s.m.Delete(key)
 	return nil
 }
 
 func (s *Store) List() <-chan []byte {
 	c := make(chan []byte)
-	s.mu.RLock()
 	go func() {
-		defer s.mu.RUnlock()
 		defer close(c)
-		for _, val := range s.db {
-			c <- val
-		}
+		s.m.Range(func(key any, val any) bool {
+			bytes, _ := val.([]byte)
+			c <- bytes
+			return true
+		})
 	}()
 	return c
 }
