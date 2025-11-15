@@ -12,18 +12,22 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-var client api.KVClient
-
-func init() {
+func setupClient(b *testing.B) api.KVClient {
+	b.Helper()
 	conn, err := grpc.NewClient(
 		"mokv://127.0.0.1:8400",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(`{"loadBalancingConfig": [{"mokv": {}}]}`),
 	)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to connect: %v", err))
+		b.Fatalf("failed to connect: %v", err)
 	}
-	client = api.NewKVClient(conn)
+
+	b.Cleanup(func() {
+		conn.Close()
+	})
+
+	client := api.NewKVClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -36,10 +40,12 @@ func init() {
 	}
 
 	time.Sleep(500 * time.Millisecond)
+	return client
 }
 
 // Benchmark single-threaded writes (measures raw latency)
 func BenchmarkSet(b *testing.B) {
+	client := setupClient(b)
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; b.Loop(); i++ {
@@ -55,6 +61,7 @@ func BenchmarkSet(b *testing.B) {
 
 // Benchmark parallel writes (measures throughput)
 func BenchmarkSetParallel(b *testing.B) {
+	client := setupClient(b)
 	ctx := context.Background()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -74,6 +81,7 @@ func BenchmarkSetParallel(b *testing.B) {
 
 // Benchmark single-threaded reads (measures raw latency)
 func BenchmarkGet(b *testing.B) {
+	client := setupClient(b)
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
@@ -86,6 +94,7 @@ func BenchmarkGet(b *testing.B) {
 
 // Benchmark parallel reads (measures throughput)
 func BenchmarkGetParallel(b *testing.B) {
+	client := setupClient(b)
 	ctx := context.Background()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {

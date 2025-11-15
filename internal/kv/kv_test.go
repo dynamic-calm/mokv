@@ -3,7 +3,6 @@ package kv_test
 import (
 	"net"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -13,15 +12,11 @@ import (
 )
 
 func TestDistributedKVReplication(t *testing.T) {
-	dir1 := filepath.Join(os.TempDir(), "node-1")
-	dir2 := filepath.Join(os.TempDir(), "node-2")
-	os.MkdirAll(dir1, 0755)
-	os.MkdirAll(dir2, 0755)
-	defer os.RemoveAll(dir1)
-	defer os.RemoveAll(dir2)
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
 
 	store1 := store.New()
-	ln1, err := net.Listen("tcp", "127.0.0.1:3001")
+	ln1, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener for node 1: %v", err)
 	}
@@ -132,7 +127,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	}
 
 	// Setup third node
-	dir3 := filepath.Join(os.TempDir(), "node-3")
+	dir3 := t.TempDir()
 	os.MkdirAll(dir3, 0755)
 	defer os.RemoveAll(dir3)
 

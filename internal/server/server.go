@@ -39,6 +39,7 @@ func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
 }
 
 func New(KV kv.KVI, opts ...grpc.ServerOption) *grpc.Server {
+	zerolog.SetGlobalLevel(zerolog.WarnLevel)
 	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
 	logOpts := []logging.Option{
 		logging.WithLogOnEvents(logging.FinishCall),

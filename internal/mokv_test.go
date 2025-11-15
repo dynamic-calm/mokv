@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path"
 	"strconv"
 	"testing"
 	"time"
@@ -22,8 +21,7 @@ func TestRunE2E(t *testing.T) {
 	ctx := context.Background()
 
 	// Setup test data directory
-	testDir := path.Join(os.TempDir(), fmt.Sprintf("mokv-test-%d", time.Now().UnixNano()))
-	defer os.RemoveAll(testDir)
+	testDir := t.TempDir()
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -53,7 +51,7 @@ func TestRunE2E(t *testing.T) {
 	// Setup client connection
 	rpcAddr := "127.0.0.1:" + strconv.Itoa(cfg.RPCPort)
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("mokv:///%s", rpcAddr),
+		fmt.Sprintf("mokv://%s", rpcAddr),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {

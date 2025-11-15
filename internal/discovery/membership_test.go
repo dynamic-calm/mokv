@@ -64,7 +64,7 @@ func TestMembership(t *testing.T) {
 	members, _ = setupMember(t, members, 8001)
 	members, _ = setupMember(t, members, 8002)
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case <-handler.joins:
 		case <-time.After(3 * time.Second):
