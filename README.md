@@ -1,9 +1,6 @@
 # mökv
 
-`mökv` is a distributed, in-memory key-value store. It utilizes [`Raft`](https://github.com/hashicorp/raft) for consensus, [`serf`](https://github.com/hashicorp/serf) for discvoery, [`gRPC`](https://github.com/grpc/grpc-go) for communication, and `TLS` for security.
-
-> [!NOTE]
-> This is a project to learn more about distributed systems and `Go`.
+`mökv` is a distributed, in-memory key-value store. It utilizes [`Raft`](https://github.com/hashicorp/raft) for consensus, [`serf`](https://github.com/hashicorp/serf) for discvoery, and [`gRPC`](https://github.com/grpc/grpc-go) for communication.
 
 ## Features
 
@@ -11,8 +8,6 @@
 - In-Memory Storage: Provides fast read and write operations.
 - `Raft` Consensus: Ensures data consistency across the cluster.
 - `gRPC` Interface: Offers a well-defined `API` for interacting with the store.
-- `TLS` Encryption: Secures communication between nodes and clients.
-- Access Control: Uses `Casbin` for authorization, enabling fine-grained control over data access.
 - Metrics: Exposes `Prometheus` metrics for monitoring cluster health and performance.
 - Service Discovery: Uses `serf` for automatic node discovery and membership management.
 - Load Balancing: Implements `gRPC` client-side load balancing, directing write operations to the leader and read operations to followers.
@@ -24,7 +19,6 @@ To run `mökv`:
 ### Prerequisites
 
 - [`Go`](https://go.dev/dl/)
-- [`cfssl`](https://github.com/cloudflare/cfssl) (for generating `TLS` certificates)
 - [`ghz`](https://ghz.sh/) (for performance testing. Optional)
 
 ### Installation
@@ -36,15 +30,7 @@ To run `mökv`:
    cd mokv
    ```
 
-2. Generate TLS Certificates:
-
-   ```bash
-   make gencert
-   ```
-
-   This command uses `cfssl` to generate the necessary `TLS` certificates in the `$HOME/.mokv` directory.
-
-3. Compile the code:
+2. Compile the code:
 
    ```bash
    make build
@@ -54,7 +40,7 @@ To run `mökv`:
 
 ### Configuration
 
-Configuration is done through command-line flags or a configuration file. A sample configuration file (`example/config.yaml`) is provided. Copy `certs/model.conf` and `certs/policy.csv` to `$HOME/.mokv`.
+Configuration is done through command-line flags or a configuration file. A sample configuration file (`example/config.yaml`) is provided.
 
 Here's an example `config.yaml`:
 
@@ -65,14 +51,6 @@ bind-addr: 127.0.0.1:8401
 rpc-port: 8400
 start-join-addrs: []
 bootstrap: true
-acl-model-file: $HOME/.mokv/model.conf
-acl-policy-file: $HOME/.mokv/policy.csv
-server-tls-cert-file: $HOME/.mokv/server.pem
-server-tls-key-file: $HOME/.mokv/server-key.pem
-server-tls-ca-file: $HOME/.mokv/ca.pem
-peer-tls-cert-file: $HOME/.mokv/root-client.pem
-peer-tls-key-file: $HOME/.mokv/root-client-key.pem
-peer-tls-ca-file: $HOME/.mokv/ca.pem
 metrics-port: 4000
 ```
 
@@ -130,7 +108,7 @@ service KV {
 
 ## gRPC
 
-`mökv` uses `gRPC` for efficient communication between clients and the cluster, secured with `TLS` client certificates for authentication and Casbin for authorization.
+`mökv` uses `gRPC` for efficient communication between clients and the cluster.
 
 - API Definition: The core `gRPC` service, `KV`, is defined in [`internal/api/kv.proto`](internal/api/kv.proto), exposing methods like `Get`, `Set`, `Delete`, `List`, and `GetServers`.
 
@@ -139,9 +117,6 @@ service KV {
 - Interceptors: `gRPC` Interceptors are used to handle:
 
   - Logging: Each incoming request is logged for monitoring.
-  - Authentication: Authenticates clients using `TLS` client certificates. The certificate's Common Name (`CN`) is extracted and used as the subject for authorization (see below). This is handled in the `authenticate` function in [`internal/server/server.go`](internal/server/server.go).
-
-- Authorization (`Casbin`): The [`internal/auth/auth.go`](internal/auth/auth.go) enforces access control. Casbin determines if the authenticated user (identified by the `CN`) has permission to perform an action ("produce" for writes, "consume" for reads).
 
 - Client-Side Load Balancing (Name Resolution and Picker): `mökv` uses client-side load balancing.
 

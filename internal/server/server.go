@@ -9,12 +9,9 @@ import (
 	"github.com/dynamic-calm/mokv/internal/api"
 	"github.com/dynamic-calm/mokv/internal/kv"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/peer"
 	status "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -22,18 +19,7 @@ import (
 type kvServer struct {
 	api.KVServer
 	KV           kv.KVI
-	authorizer   Authorizer
 	serverGetter kv.ServerProvider
-}
-
-const (
-	objectWildcard = "*"
-	produceAction  = "produce"
-	consumeAction  = "consume"
-)
-
-type Authorizer interface {
-	Authorize(subject, object, action string) error
 }
 
 func NewServerGetter(kv kv.KVI) kv.ServerProvider {
@@ -51,7 +37,7 @@ func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
 	return nil, fmt.Errorf("kv store does not support getting servers")
 }
 
-func New(KV kv.KVI, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Server {
+func New(KV kv.KVI, opts ...grpc.ServerOption) *grpc.Server {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	logOpts := []logging.Option{
 		logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
@@ -61,11 +47,9 @@ func New(KV kv.KVI, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Serv
 	opts = append(opts, grpc.StreamInterceptor(
 		grpc_middleware.ChainStreamServer(
 			logging.StreamServerInterceptor(interceptorLogger(logger), logOpts...),
-			grpc_auth.StreamServerInterceptor(authenticate),
 		),
 	), grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
 		logging.UnaryServerInterceptor(interceptorLogger(logger), logOpts...),
-		grpc_auth.UnaryServerInterceptor(authenticate),
 	)))
 
 	s := grpc.NewServer(opts...)
@@ -73,17 +57,12 @@ func New(KV kv.KVI, authorizer Authorizer, opts ...grpc.ServerOption) *grpc.Serv
 	srv := &kvServer{
 		KV:           KV,
 		serverGetter: serverGetter,
-		authorizer:   authorizer,
 	}
 	api.RegisterKVServer(s, srv)
 	return s
 }
 
 func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetResponse, error) {
-	err := s.authorizer.Authorize(subject(ctx), objectWildcard, consumeAction)
-	if err != nil {
-		return nil, err
-	}
 	value, err := s.KV.Get(req.Key)
 	if err != nil {
 		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err()
@@ -92,24 +71,16 @@ func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetRespon
 }
 
 func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetResponse, error) {
-	err := s.authorizer.Authorize(subject(ctx), objectWildcard, produceAction)
+	err := s.KV.Set(req.Key, req.Value)
 	if err != nil {
-		return nil, err
-	}
-
-	err = s.KV.Set(req.Key, req.Value)
-	if err != nil {
-		return &api.SetResponse{Ok: false}, status.New(codes.Internal, "something went wrong storing data").Err()
+		slog.Error("set operation failed", "key", req.Key, "error", err)
+		return &api.SetResponse{Ok: false}, status.Errorf(codes.Internal, "failed to set key: %v", err)
 	}
 	return &api.SetResponse{Ok: true}, nil
 }
 
 func (s *kvServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.DeleteResponse, error) {
-	err := s.authorizer.Authorize(subject(ctx), objectWildcard, produceAction)
-	if err != nil {
-		return nil, err
-	}
-	err = s.KV.Delete(req.Key)
+	err := s.KV.Delete(req.Key)
 	if err != nil {
 		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err()
 	}
@@ -117,9 +88,6 @@ func (s *kvServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.Del
 }
 
 func (s *kvServer) List(req *emptypb.Empty, stream grpc.ServerStreamingServer[api.GetResponse]) error {
-	if err := s.authorizer.Authorize(subject(stream.Context()), objectWildcard, consumeAction); err != nil {
-		return err
-	}
 	for value := range s.KV.List() {
 		select {
 		case <-stream.Context().Done():
@@ -144,35 +112,6 @@ func (s *kvServer) GetServers(ctx context.Context, req *emptypb.Empty) (*api.Get
 
 func (s *kvServer) notFoundMsg(key string) string {
 	return fmt.Sprintf("no value for key: %s", key)
-}
-
-func subject(ctx context.Context) string {
-	return ctx.Value(subjectContextKey{}).(string)
-}
-
-type subjectContextKey struct{}
-
-func authenticate(ctx context.Context) (context.Context, error) {
-	peer, ok := peer.FromContext(ctx)
-	if !ok {
-		return ctx, status.New(codes.Unknown, "couldn't find peer info").Err()
-	}
-	if peer.AuthInfo == nil {
-		return context.WithValue(ctx, subjectContextKey{}, ""), nil
-	}
-
-	tlsInfo, ok := peer.AuthInfo.(credentials.TLSInfo)
-	if !ok {
-		return ctx, status.New(codes.Unauthenticated, "invalid auth info type").Err()
-	}
-
-	if len(tlsInfo.State.VerifiedChains) == 0 || len(tlsInfo.State.VerifiedChains[0]) == 0 {
-		return ctx, status.New(codes.Unauthenticated, "no valid certificate found").Err()
-	}
-
-	subject := tlsInfo.State.VerifiedChains[0][0].Subject.CommonName
-	ctx = context.WithValue(ctx, subjectContextKey{}, subject)
-	return ctx, nil
 }
 
 func interceptorLogger(l *slog.Logger) logging.Logger {

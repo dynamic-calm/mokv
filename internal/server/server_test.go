@@ -11,13 +11,11 @@ import (
 	"time"
 
 	"github.com/dynamic-calm/mokv/internal/api"
-	"github.com/dynamic-calm/mokv/internal/auth"
-	"github.com/dynamic-calm/mokv/internal/config"
 	"github.com/dynamic-calm/mokv/internal/server"
 	"github.com/dynamic-calm/mokv/internal/store"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	status "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -30,20 +28,8 @@ func TestAPI(t *testing.T) {
 	defer listener.Close()
 
 	st := store.New()
-	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.ServerCertFile,
-		KeyFile:       config.ServerKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: listener.Addr().String(),
-		Server:        true,
-	})
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
 
-	serverCreds := credentials.NewTLS(serverTLSConfig)
-	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	srv := server.New(st, authorizer, grpc.Creds(serverCreds))
+	srv := server.New(st)
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -56,20 +42,10 @@ func TestAPI(t *testing.T) {
 
 	<-ready
 
-	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.RootClientCertFile,
-		KeyFile:       config.RootClientKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: "localhost",
-	})
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-
-	clientCreds := credentials.NewTLS(clientTLSConfig)
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds)}
-
-	clientConn, err := grpc.NewClient(listener.Addr().String(), opts...)
+	clientConn, err := grpc.NewClient(
+		listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
@@ -112,20 +88,11 @@ func TestStream(t *testing.T) {
 	defer listener.Close()
 
 	st := store.New()
-	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.ServerCertFile,
-		KeyFile:       config.ServerKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: listener.Addr().String(),
-		Server:        true,
-	})
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
 
-	serverCreds := credentials.NewTLS(serverTLSConfig)
-	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := server.New(st, authorizer, grpc.Creds(serverCreds))
+	server := server.New(st)
 	go func() {
 		if err := server.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
@@ -133,20 +100,14 @@ func TestStream(t *testing.T) {
 	}()
 	defer server.Stop()
 
-	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.RootClientCertFile,
-		KeyFile:       config.RootClientKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: "localhost",
-	})
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
 
-	clientCreds := credentials.NewTLS(clientTLSConfig)
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds)}
-
-	clientConn, err := grpc.NewClient(listener.Addr().String(), opts...)
+	clientConn, err := grpc.NewClient(
+		listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
@@ -212,20 +173,11 @@ func TestListErrors(t *testing.T) {
 	defer listener.Close()
 
 	st := store.New()
-	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.ServerCertFile,
-		KeyFile:       config.ServerKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: listener.Addr().String(),
-		Server:        true,
-	})
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
 
-	serverCreds := credentials.NewTLS(serverTLSConfig)
-	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := server.New(st, authorizer, grpc.Creds(serverCreds))
+	server := server.New(st)
 	go func() {
 		if err := server.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
@@ -233,20 +185,14 @@ func TestListErrors(t *testing.T) {
 	}()
 	defer server.Stop()
 
-	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.RootClientCertFile,
-		KeyFile:       config.RootClientKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: "localhost",
-	})
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
 
-	clientCreds := credentials.NewTLS(clientTLSConfig)
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds)}
-
-	clientConn, err := grpc.NewClient(listener.Addr().String(), opts...)
+	clientConn, err := grpc.NewClient(
+		listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
@@ -314,20 +260,11 @@ func TestConcurrency(t *testing.T) {
 	defer listener.Close()
 
 	st := store.New()
-	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.ServerCertFile,
-		KeyFile:       config.ServerKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: listener.Addr().String(),
-		Server:        true,
-	})
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
 
-	serverCreds := credentials.NewTLS(serverTLSConfig)
-	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := server.New(st, authorizer, grpc.Creds(serverCreds))
+	server := server.New(st)
 	go func() {
 		if err := server.Serve(listener); err != nil {
 			t.Errorf("server error: %v", err)
@@ -335,20 +272,14 @@ func TestConcurrency(t *testing.T) {
 	}()
 	defer server.Stop()
 
-	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.RootClientCertFile,
-		KeyFile:       config.RootClientKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: "localhost",
-	})
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
 
-	clientCreds := credentials.NewTLS(clientTLSConfig)
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds)}
-
-	clientConn, err := grpc.NewClient(listener.Addr().String(), opts...)
+	clientConn, err := grpc.NewClient(
+		listener.Addr().String(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
 		t.Fatalf("%s", err)
 	}
@@ -393,133 +324,4 @@ func TestConcurrency(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-}
-
-func TestAuthorization(t *testing.T) {
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-	defer listener.Close()
-
-	st := store.New()
-	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.ServerCertFile,
-		KeyFile:       config.ServerKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: listener.Addr().String(),
-		Server:        true,
-	})
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-
-	serverCreds := credentials.NewTLS(serverTLSConfig)
-	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	server := server.New(st, authorizer, grpc.Creds(serverCreds))
-
-	go func() {
-		if err := server.Serve(listener); err != nil {
-			t.Errorf("server error: %v", err)
-		}
-	}()
-	defer server.Stop()
-
-	// No permissions to client
-	nobodyTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.NobodyClientCertFile,
-		KeyFile:       config.NobodyClientKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: "localhost",
-	})
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-
-	nobodyCreds := credentials.NewTLS(nobodyTLSConfig)
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(nobodyCreds)}
-	clientConn, err := grpc.NewClient(listener.Addr().String(), opts...)
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-	defer clientConn.Close()
-
-	client := api.NewKVClient(clientConn)
-	ctx := context.Background()
-
-	t.Run("nobody cannot produce", func(t *testing.T) {
-		setReq := &api.SetRequest{
-			Key:   "test_key",
-			Value: []byte("test_value"),
-		}
-		_, err := client.Set(ctx, setReq)
-		if err == nil {
-			t.Fatal("expected error but got none")
-		}
-		if status.Code(err) != codes.PermissionDenied {
-			t.Fatalf("expected permission denied but got: %v", err)
-		}
-	})
-
-	t.Run("nobody cannot consume", func(t *testing.T) {
-		getReq := &api.GetRequest{
-			Key: "test_key",
-		}
-		_, err := client.Get(ctx, getReq)
-		if err == nil {
-			t.Fatal("expected error but got none")
-		}
-		if status.Code(err) != codes.PermissionDenied {
-			t.Fatalf("expected permission denied but got: %v", err)
-		}
-	})
-
-	t.Run("nobody cannot list", func(t *testing.T) {
-		stream, err := client.List(ctx, &emptypb.Empty{})
-		if err != nil {
-			if status.Code(err) != codes.PermissionDenied {
-				t.Fatalf("expected permission denied but got: %v", err)
-			}
-			return
-		}
-
-		_, err = stream.Recv()
-		if err == nil {
-			t.Fatal("expected error but got none")
-		}
-		if status.Code(err) != codes.PermissionDenied {
-			t.Fatalf("expected permission denied but got: %v", err)
-		}
-	})
-
-	t.Run("root can still access", func(t *testing.T) {
-		rootTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-			CertFile:      config.RootClientCertFile,
-			KeyFile:       config.RootClientKeyFile,
-			CAFile:        config.CAFile,
-			ServerAddress: "localhost",
-		})
-		if err != nil {
-			t.Fatalf("%s", err)
-		}
-
-		rootCreds := credentials.NewTLS(rootTLSConfig)
-		rootOpts := []grpc.DialOption{grpc.WithTransportCredentials(rootCreds)}
-
-		rootConn, err := grpc.NewClient(listener.Addr().String(), rootOpts...)
-		if err != nil {
-			t.Fatalf("%s", err)
-		}
-		defer rootConn.Close()
-
-		rootClient := api.NewKVClient(rootConn)
-
-		_, err = rootClient.Set(ctx, &api.SetRequest{
-			Key:   "root_test",
-			Value: []byte("value"),
-		})
-		if err != nil {
-			t.Fatalf("root should have access: %v", err)
-		}
-	})
 }

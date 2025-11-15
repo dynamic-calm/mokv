@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dynamic-calm/mokv/internal/config"
 	"github.com/dynamic-calm/mokv/internal/kv"
 	"github.com/dynamic-calm/mokv/internal/store"
 	"github.com/soheilhy/cmux"
@@ -20,27 +19,6 @@ func TestDistributedKVReplication(t *testing.T) {
 	os.MkdirAll(dir2, 0755)
 	defer os.RemoveAll(dir1)
 	defer os.RemoveAll(dir2)
-
-	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.ServerCertFile,
-		KeyFile:       config.ServerKeyFile,
-		CAFile:        config.CAFile,
-		Server:        true,
-		ServerAddress: "127.0.0.1",
-	})
-	if err != nil {
-		t.Fatalf("failed to setup server TLS: %v", err)
-	}
-
-	peerTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.RootClientCertFile,
-		KeyFile:       config.RootClientKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: "127.0.0.1",
-	})
-	if err != nil {
-		t.Fatalf("failed to setup peer TLS: %v", err)
-	}
 
 	store1 := store.New()
 	ln1, err := net.Listen("tcp", "127.0.0.1:3001")
@@ -57,11 +35,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	cfg1.Raft.RPCPort = "3000"
 	cfg1.Raft.LocalID = "node-1"
 	cfg1.Raft.Bootstrap = true
-	cfg1.Raft.StreamLayer = *kv.NewStreamLayer(
-		raftLn1,
-		serverTLSConfig,
-		peerTLSConfig,
-	)
+	cfg1.Raft.StreamLayer = *kv.NewStreamLayer(raftLn1)
 
 	node1, err := kv.New(store1, cfg1)
 	if err != nil {
@@ -90,11 +64,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	cfg2.Raft.RPCPort = "3001"
 	cfg2.Raft.LocalID = "node-2"
 	cfg2.Raft.Bootstrap = false
-	cfg2.Raft.StreamLayer = *kv.NewStreamLayer(
-		raftLn2,
-		serverTLSConfig,
-		peerTLSConfig,
-	)
+	cfg2.Raft.StreamLayer = *kv.NewStreamLayer(raftLn2)
 
 	node2, err := kv.New(store2, cfg2)
 	if err != nil {
@@ -181,11 +151,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	cfg3.Raft.RPCPort = "3002"
 	cfg3.Raft.LocalID = "node-3"
 	cfg3.Raft.Bootstrap = false
-	cfg3.Raft.StreamLayer = *kv.NewStreamLayer(
-		raftLn3,
-		serverTLSConfig,
-		peerTLSConfig,
-	)
+	cfg3.Raft.StreamLayer = *kv.NewStreamLayer(raftLn3)
 
 	node3, err := kv.New(store3, cfg3)
 	if err != nil {
