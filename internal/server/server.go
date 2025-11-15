@@ -86,7 +86,7 @@ func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetRespon
 	}
 	value, err := s.KV.Get(req.Key)
 	if err != nil {
-		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err() // TODO improve error handling. Do boundary layers.
+		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err()
 	}
 	return &api.GetResponse{Value: value, Key: req.Key}, nil
 }
@@ -99,7 +99,6 @@ func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetRespon
 
 	err = s.KV.Set(req.Key, req.Value)
 	if err != nil {
-		slog.Error("ee", "err", err)
 		return &api.SetResponse{Ok: false}, status.New(codes.Internal, "something went wrong storing data").Err()
 	}
 	return &api.SetResponse{Ok: true}, nil
@@ -174,13 +173,6 @@ func authenticate(ctx context.Context) (context.Context, error) {
 	subject := tlsInfo.State.VerifiedChains[0][0].Subject.CommonName
 	ctx = context.WithValue(ctx, subjectContextKey{}, subject)
 	return ctx, nil
-}
-
-func firstOrEmpty(values []string) string {
-	if len(values) > 0 {
-		return values[0]
-	}
-	return ""
 }
 
 func interceptorLogger(l *slog.Logger) logging.Logger {

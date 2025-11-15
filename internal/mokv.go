@@ -67,18 +67,18 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 		return nil, fmt.Errorf("failed to start prometheus exporter: %w", err)
 	}
 
-	provider := metric.NewMeterProvider(metric.WithReader(exp))
+	meterProvider := metric.NewMeterProvider(metric.WithReader(exp))
 
 	// Configure KV store
-	port := strconv.Itoa(cfg.RPCPort)
+	rpcPort := strconv.Itoa(cfg.RPCPort)
 	kvCFG := &kv.KVConfig{DataDir: cfg.DataDir}
 	kvCFG.Raft.BindAddr = cfg.BindAddr
-	kvCFG.Raft.RPCPort = port
+	kvCFG.Raft.RPCPort = rpcPort
 	kvCFG.Raft.LocalID = raft.ServerID(cfg.NodeName)
 	kvCFG.Raft.Bootstrap = cfg.Bootstrap
 
 	// Setup network listener
-	rpcAddr := net.JoinHostPort("127.0.0.1", port)
+	rpcAddr := net.JoinHostPort("127.0.0.1", rpcPort)
 	listener, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create listener: %w", err)
@@ -87,14 +87,20 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 	// Setup connection multiplexer
 	myCmux := cmux.New(listener)
 
-	// Configure Raft listener
-	raftLn := myCmux.Match(func(reader io.Reader) bool {
+	// Configure Raft listener.
+	// If the first byte of the incoming connection is our RaftRPC constant,
+	// we know the call was initiated by Raft, and not a regular operation: get, set, etc.
+	raftLn := myCmux.Match(func(r io.Reader) bool {
 		b := make([]byte, 1)
-		if _, err := reader.Read(b); err != nil {
+		if _, err := r.Read(b); err != nil {
 			return false
 		}
+
 		return bytes.Equal(b, []byte{byte(kv.RaftRPC)})
 	})
+
+	// The rest of connections are regular gRPC calls. Since this is set
+	// below, the Raft listener has precedence.
 	grpcLn := myCmux.Match(cmux.Any())
 
 	// Setup Raft stream layer
@@ -117,7 +123,7 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 		opentelemetry.ServerOption(
 			opentelemetry.Options{
 				MetricsOptions: opentelemetry.MetricsOptions{
-					MeterProvider: provider,
+					MeterProvider: meterProvider,
 				},
 			},
 		),
@@ -141,22 +147,21 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 	}
 
 	// Setup metrics server
-	metricsAddr := fmt.Sprintf(":%d", cfg.MetricsPort)
 	metricsServer := &http.Server{
-		Addr:    metricsAddr,
+		Addr:    fmt.Sprintf(":%d", cfg.MetricsPort),
 		Handler: promhttp.Handler(),
 	}
 
 	return &MOKV{
+		kv:            kv,
 		cfg:           cfg,
 		getEnv:        getEnv,
-		meterProvider: provider,
-		kv:            kv,
-		grpcServer:    grpcServer,
-		metricsServer: metricsServer,
 		grpcLn:        grpcLn,
-		membership:    membership,
 		cmux:          myCmux,
+		grpcServer:    grpcServer,
+		membership:    membership,
+		meterProvider: meterProvider,
+		metricsServer: metricsServer,
 	}, nil
 }
 
@@ -175,7 +180,7 @@ func (m *MOKV) Listen(ctx context.Context) error {
 		return nil
 	})
 
-	// Start gRPC server
+	// Start gRPC server though gprcLn
 	g.Go(func() error {
 		slog.Info("gRPC server listening...", "addr", m.grpcLn.Addr())
 		if err := m.grpcServer.Serve(m.grpcLn); err != nil {
@@ -186,7 +191,7 @@ func (m *MOKV) Listen(ctx context.Context) error {
 
 	// Start Multiplexer
 	g.Go(func() error {
-		slog.Info("multiplexer listening...")
+		slog.Info("multiplexer (RAFT, gRPC) listening...")
 		if err := m.cmux.Serve(); err != nil {
 			return fmt.Errorf("multiplexer server error: %w", err)
 		}
@@ -196,7 +201,7 @@ func (m *MOKV) Listen(ctx context.Context) error {
 	// Handle shutdown
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 		defer cancel()
 
 		if err := m.close(shutdownCtx); err != nil {

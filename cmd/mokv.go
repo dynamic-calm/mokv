@@ -42,7 +42,7 @@ func main() {
 func setupFlags(cmd *cobra.Command) error {
 	hostname, err := os.Hostname()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	dataDir := path.Join(os.TempDir(), "mokv")
 	cmd.Flags().String("config-file", "", "Path to config file.")
@@ -54,11 +54,11 @@ func setupFlags(cmd *cobra.Command) error {
 	cmd.Flags().Bool("bootstrap", false, "Bootstrap the cluster.")
 	cmd.Flags().String("acl-model-file", "", "Path to ACL model.")
 	cmd.Flags().String("acl-policy-file", "", "Path to ACL policy.")
-	cmd.Flags().String("server-tls-cert-file", "", "Path to server tls cert.")
-	cmd.Flags().String("server-tls-key-file", "", "Path to server tls key.")
+	cmd.Flags().String("server-tls-cert-file", "", "Path to server TLS cert.")
+	cmd.Flags().String("server-tls-key-file", "", "Path to server TLS key.")
 	cmd.Flags().String("server-tls-ca-file", "", "Path to server certificate authority.")
-	cmd.Flags().String("peer-tls-cert-file", "", "Path to peer tls cert.")
-	cmd.Flags().String("peer-tls-key-file", "", "Path to peer tls key.")
+	cmd.Flags().String("peer-tls-cert-file", "", "Path to peer TLS cert.")
+	cmd.Flags().String("peer-tls-key-file", "", "Path to peer TLS key.")
 	cmd.Flags().String("peer-tls-ca-file", "", "Path to peer certificate authority.")
 	cmd.Flags().Int("metrics-port", 4000, "Port for metrics server.")
 	return viper.BindPFlags(cmd.Flags())
