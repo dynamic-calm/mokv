@@ -3,7 +3,6 @@ package mokv
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -15,8 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dynamic-calm/mokv/internal/auth"
-	"github.com/dynamic-calm/mokv/internal/config"
 	"github.com/dynamic-calm/mokv/internal/discovery"
 	"github.com/dynamic-calm/mokv/internal/kv"
 	"github.com/dynamic-calm/mokv/internal/server"
@@ -28,22 +25,17 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/stats/opentelemetry"
 )
 
 type Config struct {
-	DataDir         string
-	NodeName        string
-	BindAddr        string
-	RPCPort         int
-	MetricsPort     int
-	StartJoinAddrs  []string
-	Bootstrap       bool
-	ACLModelFile    string
-	ACLPolicyFile   string
-	ServerTLSConfig *tls.Config
-	PeerTLSConfig   *tls.Config
+	DataDir        string
+	NodeName       string
+	BindAddr       string
+	RPCPort        int
+	MetricsPort    int
+	StartJoinAddrs []string
+	Bootstrap      bool
 }
 
 type GetEnv func(string) string
@@ -104,11 +96,7 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 	grpcLn := myCmux.Match(cmux.Any())
 
 	// Setup Raft stream layer
-	kvCFG.Raft.StreamLayer = *kv.NewStreamLayer(
-		raftLn,
-		cfg.ServerTLSConfig,
-		cfg.PeerTLSConfig,
-	)
+	kvCFG.Raft.StreamLayer = *kv.NewStreamLayer(raftLn)
 
 	// Initialize store and KV
 	store := store.New()
@@ -119,7 +107,6 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 
 	// Configure gRPC server
 	serverOpts := []grpc.ServerOption{
-		grpc.Creds(credentials.NewTLS(cfg.ServerTLSConfig)),
 		opentelemetry.ServerOption(
 			opentelemetry.Options{
 				MetricsOptions: opentelemetry.MetricsOptions{
@@ -129,9 +116,7 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 		),
 	}
 
-	// Setup authorization
-	authorizer := auth.New(config.ACLModelFile, config.ACLPolicyFile)
-	grpcServer := server.New(kv, authorizer, serverOpts...)
+	grpcServer := server.New(kv, serverOpts...)
 
 	// Initialize membership
 	membership, err := discovery.NewMembership(kv, discovery.MembershipConfig{

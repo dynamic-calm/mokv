@@ -2,7 +2,6 @@ package kv
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -256,8 +255,8 @@ func (kv *KV) setupRaft(dataDir string) error {
 	config.HeartbeatTimeout = 150 * time.Millisecond
 	config.ElectionTimeout = 500 * time.Millisecond
 	config.LeaderLeaseTimeout = 50 * time.Millisecond
-	config.SnapshotInterval = 10 * time.Second
-	config.SnapshotThreshold = 100
+	config.SnapshotInterval = 120 * time.Second
+	config.SnapshotThreshold = 8192
 
 	kv.raft, err = raft.NewRaft(
 		config,
@@ -398,20 +397,12 @@ var _ raft.StreamLayer = (*StreamLayer)(nil)
 const RaftRPC = 1
 
 type StreamLayer struct {
-	ln              net.Listener
-	serverTLSConfig *tls.Config
-	peerTLSConfig   *tls.Config
+	ln net.Listener
 }
 
-func NewStreamLayer(
-	ln net.Listener,
-	serverTLSConfig,
-	peerTLSConfig *tls.Config,
-) *StreamLayer {
+func NewStreamLayer(ln net.Listener) *StreamLayer {
 	return &StreamLayer{
-		ln:              ln,
-		serverTLSConfig: serverTLSConfig,
-		peerTLSConfig:   peerTLSConfig,
+		ln: ln,
 	}
 }
 
@@ -429,9 +420,6 @@ func (s *StreamLayer) Dial(
 	if err != nil {
 		return nil, err
 	}
-	if s.peerTLSConfig != nil {
-		conn = tls.Client(conn, s.peerTLSConfig)
-	}
 	return conn, err
 }
 
@@ -447,9 +435,6 @@ func (s *StreamLayer) Accept() (net.Conn, error) {
 	}
 	if !bytes.Equal([]byte{byte(RaftRPC)}, b) {
 		return nil, errors.New("not a raft rpc")
-	}
-	if s.serverTLSConfig != nil {
-		return tls.Server(conn, s.serverTLSConfig), nil
 	}
 	return conn, nil
 }

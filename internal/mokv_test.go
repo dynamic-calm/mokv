@@ -13,9 +13,8 @@ import (
 
 	mokv "github.com/dynamic-calm/mokv/internal"
 	"github.com/dynamic-calm/mokv/internal/api"
-	"github.com/dynamic-calm/mokv/internal/config"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -31,44 +30,13 @@ func TestRunE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Setup Server TLS
-	serverTLSConfig, err := config.SetupTLSConfig(
-		config.TLSConfig{
-			CertFile:      config.ServerCertFile,
-			KeyFile:       config.ServerKeyFile,
-			CAFile:        config.CAFile,
-			ServerAddress: "127.0.0.1",
-			Server:        true,
-		},
-	)
-	if err != nil {
-		t.Fatalf("server TLS setup failed: %s", err)
-	}
-
-	// Setup Peer TLS
-	peerTLSConfig, err := config.SetupTLSConfig(
-		config.TLSConfig{
-			CertFile:      config.RootClientCertFile,
-			KeyFile:       config.RootClientKeyFile,
-			CAFile:        config.CAFile,
-			ServerAddress: "127.0.0.1",
-		},
-	)
-	if err != nil {
-		t.Fatalf("peer TLS setup failed: %s", err)
-	}
-
 	cfg := &mokv.Config{
-		DataDir:         testDir,
-		NodeName:        hostname,
-		BindAddr:        "127.0.0.1:8401",
-		RPCPort:         8400,
-		MetricsPort:     4000,
-		Bootstrap:       true,
-		ACLModelFile:    config.ACLModelFile,
-		ACLPolicyFile:   config.ACLPolicyFile,
-		ServerTLSConfig: serverTLSConfig,
-		PeerTLSConfig:   peerTLSConfig,
+		DataDir:     testDir,
+		NodeName:    hostname,
+		BindAddr:    "127.0.0.1:8401",
+		RPCPort:     8400,
+		MetricsPort: 4000,
+		Bootstrap:   true,
 	}
 
 	m, err := mokv.New(cfg, os.Getenv)
@@ -82,23 +50,11 @@ func TestRunE2E(t *testing.T) {
 
 	time.Sleep(3 * time.Second)
 
-	// Setup client TLS
-	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CertFile:      config.RootClientCertFile,
-		KeyFile:       config.RootClientKeyFile,
-		CAFile:        config.CAFile,
-		ServerAddress: "127.0.0.1",
-	})
-	if err != nil {
-		t.Fatalf("client TLS setup failed: %s", err)
-	}
-
 	// Setup client connection
-	clientCreds := credentials.NewTLS(clientTLSConfig)
 	rpcAddr := "127.0.0.1:" + strconv.Itoa(cfg.RPCPort)
 	conn, err := grpc.NewClient(
 		fmt.Sprintf("mokv:///%s", rpcAddr),
-		grpc.WithTransportCredentials(clientCreds),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
 		t.Fatalf("failed to connect: %s", err)
