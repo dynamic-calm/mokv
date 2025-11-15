@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dynamic-calm/mokv/internal/api"
-	"github.com/dynamic-calm/mokv/internal/server"
-	"github.com/dynamic-calm/mokv/internal/store"
+	"github.com/dynamic-calm/mokv/api"
+	"github.com/dynamic-calm/mokv/server"
+	"github.com/dynamic-calm/mokv/store"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"

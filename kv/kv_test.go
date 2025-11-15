@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dynamic-calm/mokv/internal/kv"
-	"github.com/dynamic-calm/mokv/internal/store"
+	"github.com/dynamic-calm/mokv/kv"
+	"github.com/dynamic-calm/mokv/store"
 	"github.com/soheilhy/cmux"
 )
 

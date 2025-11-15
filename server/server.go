@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dynamic-calm/mokv/internal/api"
-	"github.com/dynamic-calm/mokv/internal/kv"
+	"github.com/dynamic-calm/mokv/api"
+	"github.com/dynamic-calm/mokv/kv"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/rs/zerolog"

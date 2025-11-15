@@ -15,10 +15,10 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/dynamic-calm/mokv/internal/discovery"
-	"github.com/dynamic-calm/mokv/internal/kv"
-	"github.com/dynamic-calm/mokv/internal/server"
-	"github.com/dynamic-calm/mokv/internal/store"
+	"github.com/dynamic-calm/mokv/discovery"
+	"github.com/dynamic-calm/mokv/kv"
+	"github.com/dynamic-calm/mokv/server"
+	"github.com/dynamic-calm/mokv/store"
 	"github.com/hashicorp/raft"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/soheilhy/cmux"

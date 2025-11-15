@@ -8,7 +8,7 @@ import (
 
 	_ "net/http/pprof"
 
-	mokv "github.com/dynamic-calm/mokv/internal"
+	"github.com/dynamic-calm/mokv/mokv"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

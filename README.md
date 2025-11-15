@@ -90,7 +90,7 @@ service KV {
 
 `mökv` combines `Serf` for node discovery and `Raft` for consistent data replication. Here's how the key components interact:
 
-- `Serf`: Dynamic Membership: `Serf` uses `UDP` to monitor cluster membership. When a node joins, the `serf.EventMemberJoin` event triggers the `Join` function ([`internal/kv/kv.go`](/internal/kv/kv.go)), adding the node as a `Raft` voter. This ensures the `Raft` cluster reflects the current active nodes.
+- `Serf`: Dynamic Membership: `Serf` uses `UDP` to monitor cluster membership. When a node joins, the `serf.EventMemberJoin` event triggers the `Join` function ([`internal/kv/kv.go`](/kv/kv.go)), adding the node as a `Raft` voter. This ensures the `Raft` cluster reflects the current active nodes.
 
 - `Raft`: Consensus and the FSM: `Raft` guarantees data consistency. One node is `Leader`, handling all write operations. Write operations become `Raft` log entries, replicated to `Followers`. The _Finite State Machine (`FSM`)_ is the core of `Raft's` operation:
 

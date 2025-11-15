@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	mokv "github.com/dynamic-calm/mokv/internal"
-	"github.com/dynamic-calm/mokv/internal/api"
+	"github.com/dynamic-calm/mokv/api"
+	"github.com/dynamic-calm/mokv/mokv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"

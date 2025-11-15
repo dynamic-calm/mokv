@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dynamic-calm/mokv/internal/api"
-	_ "github.com/dynamic-calm/mokv/internal/discovery"
+	"github.com/dynamic-calm/mokv/api"
+	_ "github.com/dynamic-calm/mokv/discovery"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
