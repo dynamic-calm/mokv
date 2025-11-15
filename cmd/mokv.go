@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
-	"log"
+	"net/http"
 	"os"
 	"path"
 
+	_ "net/http/pprof"
+
 	mokv "github.com/dynamic-calm/mokv/internal"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -28,11 +31,11 @@ func main() {
 	}
 
 	if err := setupFlags(cmd); err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Msg("error setting up flags")
 	}
 
 	if err := cmd.Execute(); err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Msg("error executing command")
 	}
 }
 
@@ -87,6 +90,13 @@ func (cli *cli) run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	go func() {
+		log.Info().Str("addr", "loclahost:6060").Msg("starting pprof server")
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			log.Error().Err(err).Msg("pprof server failed")
+		}
+	}()
 
 	if err := mokv.Listen(ctx); err != nil {
 		return err

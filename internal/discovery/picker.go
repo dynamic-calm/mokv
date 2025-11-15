@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"log/slog"
 	"strings"
 	"sync/atomic"
 
@@ -19,6 +20,7 @@ func init() {
 var _ base.PickerBuilder = (*Builder)(nil)
 
 func (b *Builder) Build(info base.PickerBuildInfo) balancer.Picker {
+	slog.Info("building picker", "ready_count", len(info.ReadySCs))
 	var leader balancer.SubConn
 	var followers []balancer.SubConn
 
@@ -51,22 +53,42 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		return result, balancer.ErrNoSubConnAvailable
 	}
 
-	if strings.Contains(info.FullMethodName, "Set") ||
-		strings.Contains(info.FullMethodName, "Delete") {
+	methodName := info.FullMethodName
+	isWrite := strings.Contains(methodName, "Set") ||
+		strings.Contains(methodName, "Delete")
+
+	// No available connections
+	if p.leader == nil && len(p.followers) == 0 {
+		slog.Debug("pick failed: no available subconns",
+			"method", methodName)
+		return result, balancer.ErrNoSubConnAvailable
+	}
+
+	// Write operations must go to leader
+	if isWrite {
 		if p.leader == nil {
+			slog.Debug("pick failed: write operation but no leader",
+				"method", methodName)
 			return result, balancer.ErrNoSubConnAvailable
 		}
 		result.SubConn = p.leader
+		slog.Debug("picked leader for write", "method", methodName)
 		return result, nil
 	}
 
+	// Read operations prefer followers for load distribution
 	if len(p.followers) > 0 {
 		result.SubConn = p.nextFollower()
+		slog.Debug("picked follower for read",
+			"method", methodName,
+			"follower_index", p.current%uint64(len(p.followers)))
 		return result, nil
 	}
 
+	// Fall back to leader for reads if no followers available
 	if p.leader != nil {
 		result.SubConn = p.leader
+		slog.Debug("picked leader for read (no followers)", "method", methodName)
 		return result, nil
 	}
 
