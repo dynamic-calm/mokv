@@ -3,13 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 
 	"github.com/dynamic-calm/mokv/internal/api"
 	"github.com/dynamic-calm/mokv/internal/kv"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
+	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -20,6 +20,7 @@ type kvServer struct {
 	api.KVServer
 	KV           kv.KVI
 	serverGetter kv.ServerProvider
+	logger       zerolog.Logger
 }
 
 func NewServerGetter(kv kv.KVI) kv.ServerProvider {
@@ -38,9 +39,10 @@ func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
 }
 
 func New(KV kv.KVI, opts ...grpc.ServerOption) *grpc.Server {
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
 	logOpts := []logging.Option{
-		logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
+		logging.WithLogOnEvents(logging.FinishCall),
+		logging.WithLevels(logging.DefaultServerCodeToLevel),
 	}
 
 	// Middleware for streaming and unary requests
@@ -73,7 +75,7 @@ func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetRespon
 func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetResponse, error) {
 	err := s.KV.Set(req.Key, req.Value)
 	if err != nil {
-		slog.Error("set operation failed", "key", req.Key, "error", err)
+		s.logger.Error().Err(err).Str("key", req.Key).Msg("set operation failed")
 		return &api.SetResponse{Ok: false}, status.Errorf(codes.Internal, "failed to set key: %v", err)
 	}
 	return &api.SetResponse{Ok: true}, nil
@@ -114,8 +116,21 @@ func (s *kvServer) notFoundMsg(key string) string {
 	return fmt.Sprintf("no value for key: %s", key)
 }
 
-func interceptorLogger(l *slog.Logger) logging.Logger {
+func interceptorLogger(l zerolog.Logger) logging.Logger {
 	return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
-		l.Log(ctx, slog.Level(lvl), msg, fields...)
+		var event *zerolog.Event
+		switch lvl {
+		case logging.LevelDebug:
+			event = l.Debug()
+		case logging.LevelInfo:
+			event = l.Info()
+		case logging.LevelWarn:
+			event = l.Warn()
+		case logging.LevelError:
+			event = l.Error()
+		default:
+			event = l.Info()
+		}
+		event.Fields(fields).Msg(msg)
 	})
 }

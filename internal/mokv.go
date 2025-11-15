@@ -6,13 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"os/signal"
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/dynamic-calm/mokv/internal/discovery"
 	"github.com/dynamic-calm/mokv/internal/kv"
@@ -158,7 +159,7 @@ func (m *MOKV) Listen(ctx context.Context) error {
 
 	// Start metrics server
 	g.Go(func() error {
-		slog.Info("metrics server listening...", "addr", m.metricsServer.Addr)
+		log.Info().Str("addr", m.metricsServer.Addr).Msg("metrics server listening...")
 		if err := m.metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return fmt.Errorf("metrics server failed: %w", err)
 		}
@@ -167,7 +168,7 @@ func (m *MOKV) Listen(ctx context.Context) error {
 
 	// Start gRPC server though gprcLn
 	g.Go(func() error {
-		slog.Info("gRPC server listening...", "addr", m.grpcLn.Addr())
+		log.Info().Str("addr", m.grpcLn.Addr().String()).Msg("gRPC server listening...")
 		if err := m.grpcServer.Serve(m.grpcLn); err != nil {
 			return fmt.Errorf("gRPC server error: %w", err)
 		}
@@ -176,7 +177,7 @@ func (m *MOKV) Listen(ctx context.Context) error {
 
 	// Start Multiplexer
 	g.Go(func() error {
-		slog.Info("multiplexer (RAFT, gRPC) listening...")
+		log.Info().Msg("multiplexer (RAFT, gRPC) listening...")
 		if err := m.cmux.Serve(); err != nil {
 			return fmt.Errorf("multiplexer server error: %w", err)
 		}
@@ -190,7 +191,7 @@ func (m *MOKV) Listen(ctx context.Context) error {
 		defer cancel()
 
 		if err := m.close(shutdownCtx); err != nil {
-			slog.Error("shutdown error", "error", err)
+			log.Error().Err(err).Msg("shutdown error")
 		}
 	}()
 

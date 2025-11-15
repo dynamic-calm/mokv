@@ -36,8 +36,9 @@ func (r *Resolver) Build(
 	cc resolver.ClientConn,
 	opts resolver.BuildOptions,
 ) (resolver.Resolver, error) {
-	slog.Info("building resolver", "target", target.Endpoint())
+	slog.Info("building resolver", "target", target.URL.Host)
 	r.clientConn = cc
+
 	var dialOpts []grpc.DialOption
 	if opts.DialCreds != nil {
 		dialOpts = append(
@@ -49,7 +50,7 @@ func (r *Resolver) Build(
 		fmt.Sprintf(`{"loadBalancingConfig":[{"%s":{}}]}`, Name),
 	)
 	var err error
-	r.resolverConn, err = grpc.NewClient(target.Endpoint(), dialOpts...)
+	r.resolverConn, err = grpc.NewClient(target.URL.Host, dialOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +74,7 @@ func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 	res, err := client.GetServers(ctx, &emptypb.Empty{})
 	if err != nil {
 		slog.Error("failed to resolve server", "err", err)
+		r.clientConn.ReportError(err)
 		return
 	}
 	var addrs []resolver.Address
@@ -86,6 +88,7 @@ func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 			),
 		})
 	}
+
 	r.clientConn.UpdateState(resolver.State{
 		Addresses:     addrs,
 		ServiceConfig: r.serviceConfig,
