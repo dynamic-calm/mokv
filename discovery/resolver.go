@@ -3,11 +3,11 @@ package discovery
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/dynamic-calm/mokv/api"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/resolver"
@@ -26,7 +26,7 @@ type Resolver struct {
 
 func init() {
 	resolver.Register(&Resolver{})
-	slog.Info("registered mokv resolver")
+	log.Info().Msg("registered mokv resolver")
 }
 
 var _ resolver.Builder = (*Resolver)(nil)
@@ -36,9 +36,11 @@ func (r *Resolver) Build(
 	cc resolver.ClientConn,
 	opts resolver.BuildOptions,
 ) (resolver.Resolver, error) {
-	slog.Info("building resolver", "target", target.URL.Host)
-	r.clientConn = cc
+	log.Info().
+		Str("target", target.URL.Host).
+		Msg("building resolver")
 
+	r.clientConn = cc
 	var dialOpts []grpc.DialOption
 	if opts.DialCreds != nil {
 		dialOpts = append(
@@ -54,7 +56,6 @@ func (r *Resolver) Build(
 	if err != nil {
 		return nil, err
 	}
-
 	r.ResolveNow(resolver.ResolveNowOptions{})
 	return r, nil
 }
@@ -73,13 +74,17 @@ func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 	defer cancel()
 	res, err := client.GetServers(ctx, &emptypb.Empty{})
 	if err != nil {
-		slog.Error("failed to resolve server", "err", err)
+		log.Error().
+			Err(err).
+			Msg("failed to resolve server")
 		r.clientConn.ReportError(err)
 		return
 	}
 	var addrs []resolver.Address
 	for _, server := range res.Servers {
-		slog.Info("got server", "server", server)
+		log.Info().
+			Interface("server", server).
+			Msg("got server")
 		addrs = append(addrs, resolver.Address{
 			Addr: server.RpcAddr,
 			Attributes: attributes.New(
@@ -88,7 +93,6 @@ func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 			),
 		})
 	}
-
 	r.clientConn.UpdateState(resolver.State{
 		Addresses:     addrs,
 		ServiceConfig: r.serviceConfig,
@@ -97,7 +101,9 @@ func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 
 func (r *Resolver) Close() {
 	if err := r.resolverConn.Close(); err != nil {
-		slog.Error("failed to close connection", "err", err)
+		log.Error().
+			Err(err).
+			Msg("failed to close connection")
 		return
 	}
 }

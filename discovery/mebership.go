@@ -1,8 +1,9 @@
 package discovery
 
 import (
-	"log/slog"
 	"net"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/serf/serf"
@@ -98,29 +99,28 @@ func (m *Membership) eventHandler() {
 }
 
 func (m *Membership) handleJoin(member serf.Member) {
-	slog.Info("handling join event",
-		"member_name", member.Name,
-		"member_addr", member.Addr.String(),
-		"member_tags", member.Tags)
+	log.Info().
+		Str("member_name", member.Name).
+		Str("member_addr", member.Addr.String()).
+		Msg("handling join event")
 
 	err := m.handler.Join(member.Name, member.Tags["rpc_addr"])
 	if err != nil {
-		slog.Error("failed to join", "error", err, "member", member)
+		log.Error().Err(err).Msg("failed to join")
 		return
 	}
-	slog.Info("successfully handled join", "member", member.Name)
+	log.Info().Str("member", member.Name).Msg("successfully handled join")
 }
 
 func (m *Membership) handleLeave(member serf.Member) {
-	slog.Info("handling leave event",
-		"member_name", member.Name,
-		"member_addr", member.Addr.String())
+	log.Info().
+		Str("member_name", member.Name).
+		Str("member_addr", member.Addr.String()).
+		Msg("handling leave event")
 
 	err := m.handler.Leave(member.Name)
 	if err != nil {
-		slog.Error("failed to process leave",
-			"error", err,
-			"member", member.Name)
+		log.Error().Err(err).Str("member", member.Name).Msg("failed to process leave")
 	}
 }
 
