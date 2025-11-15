@@ -17,7 +17,7 @@ type Store struct {
 }
 
 func New() *Store {
-	return &Store{m: sync.Map{}}
+	return &Store{}
 }
 
 func (s *Store) Get(key string) ([]byte, error) {
@@ -28,7 +28,7 @@ func (s *Store) Get(key string) ([]byte, error) {
 
 	bytes, ok := value.([]byte)
 	if !ok {
-		return nil, errors.New("not bytes")
+		return nil, errors.New("value is not of type []byte")
 	}
 	return bytes, nil
 }
@@ -48,10 +48,7 @@ func (s *Store) List() <-chan []byte {
 	go func() {
 		defer close(c)
 		s.m.Range(func(key any, val any) bool {
-			bytes, ok := val.([]byte)
-			if !ok {
-				return false
-			}
+			bytes, _ := val.([]byte)
 			c <- bytes
 			return true
 		})
