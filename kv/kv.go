@@ -6,16 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/dynamic-calm/mokv/internal/api"
-	"github.com/dynamic-calm/mokv/internal/store"
+	"github.com/dynamic-calm/mokv/api"
+	"github.com/dynamic-calm/mokv/store"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -68,7 +68,7 @@ func New(store store.Storer, cfg *KVConfig) (*KV, error) {
 		store: store,
 	}
 	if err := kv.setupRaft(kv.cfg.DataDir); err != nil {
-		slog.Error("failed setting up raft", "err", err)
+		log.Error().Err(err).Msg("failed setting up raft")
 		return nil, err
 	}
 	return kv, nil
@@ -148,13 +148,19 @@ func (kv *KV) GetServers() ([]*api.Server, error) {
 }
 
 func (kv *KV) Join(id, addr string) error {
-	slog.Info("attempting to join", "id", id, "addr", addr)
+	log.Info().
+		Str("id", id).
+		Str("addr", addr).
+		Msg("attempting to join")
 
 	serverID := raft.ServerID(id)
 	serverAddr := raft.ServerAddress(addr)
 
 	isLeader := kv.raft.State() == raft.Leader
-	slog.Info("join request received", "am_i_leader", isLeader)
+	log.Info().
+		Bool("am_i_leader", isLeader).
+		Msg("join request received")
+
 	if !isLeader {
 		leaderAddr := kv.raft.Leader()
 		return fmt.Errorf("not the leader, please retry join request with leader at %s", leaderAddr)
@@ -166,20 +172,32 @@ func (kv *KV) Join(id, addr string) error {
 	}
 
 	for _, srv := range configFuture.Configuration().Servers {
-		slog.Info("existing server", "id", srv.ID, "addr", srv.Address)
+		log.Info().
+			Str("id", string(srv.ID)).
+			Str("addr", string(srv.Address)).
+			Msg("existing server")
+
 		if srv.ID == serverID && srv.Address == serverAddr {
-			slog.Info("server already joined", "id", id)
+			log.Info().
+				Str("id", id).
+				Msg("server already joined")
 			return nil
 		}
 	}
 
-	slog.Info("adding voter to cluster", "id", id, "addr", addr)
+	log.Info().
+		Str("id", id).
+		Str("addr", addr).
+		Msg("adding voter to cluster")
+
 	addFuture := kv.raft.AddVoter(serverID, serverAddr, 0, time.Second*10)
 	if err := addFuture.Error(); err != nil {
 		return fmt.Errorf("failed to add voter: %w", err)
 	}
 
-	slog.Info("successfully added voter", "id", id)
+	log.Info().
+		Str("id", id).
+		Msg("successfully added voter")
 	return nil
 }
 
@@ -252,11 +270,14 @@ func (kv *KV) setupRaft(dataDir string) error {
 
 	config := raft.DefaultConfig()
 	config.LocalID = kv.cfg.Raft.LocalID
-	config.HeartbeatTimeout = 150 * time.Millisecond
-	config.ElectionTimeout = 500 * time.Millisecond
-	config.LeaderLeaseTimeout = 50 * time.Millisecond
+	config.HeartbeatTimeout = 50 * time.Millisecond
+	config.ElectionTimeout = 150 * time.Millisecond
+	config.LeaderLeaseTimeout = 25 * time.Millisecond
+	config.CommitTimeout = 50 * time.Millisecond
 	config.SnapshotInterval = 120 * time.Second
 	config.SnapshotThreshold = 8192
+	config.MaxAppendEntries = 64
+	config.BatchApplyCh = true
 
 	kv.raft, err = raft.NewRaft(
 		config,
@@ -282,9 +303,10 @@ func (kv *KV) setupRaft(dataDir string) error {
 	}
 
 	if kv.cfg.Raft.Bootstrap && !hasState {
-		slog.Info("bootstrapping first node",
-			"id", config.LocalID,
-			"addr", transport.LocalAddr())
+		log.Info().
+			Str("id", string(config.LocalID)).
+			Str("addr", string(transport.LocalAddr())).
+			Msg("bootstrapping first node")
 
 		config := raft.Configuration{
 			Servers: []raft.Server{
@@ -298,7 +320,7 @@ func (kv *KV) setupRaft(dataDir string) error {
 		if err != nil {
 			return fmt.Errorf("failed to bootstrap: %w", err)
 		}
-		slog.Info("bootstrap successful")
+		log.Info().Msg("bootstrap successful")
 	}
 
 	return nil

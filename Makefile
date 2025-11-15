@@ -17,8 +17,8 @@ start:
 
 .PHONY: build
 build:
-	go build -o bin/mokv ./cmd/mokv.go
+	go build -o bin/mokv main.go
 
 .PHONY: perf
 perf:
-	-go test -bench=. -benchtime=5s ./internal/ -run=^# -benchmem
+	-go test -bench=. -benchtime=5s ./mokv -benchmem -run=^#

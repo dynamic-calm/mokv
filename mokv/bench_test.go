@@ -6,18 +6,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dynamic-calm/mokv/internal/api"
-	_ "github.com/dynamic-calm/mokv/internal/discovery"
+	"github.com/dynamic-calm/mokv/api"
+	_ "github.com/dynamic-calm/mokv/discovery"
+	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 func setupClient(b *testing.B) api.KVClient {
+	zerolog.SetGlobalLevel(zerolog.Disabled)
 	b.Helper()
 	conn, err := grpc.NewClient(
 		"mokv://127.0.0.1:8400",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultServiceConfig(`{"loadBalancingConfig": [{"mokv": {}}]}`),
+		grpc.WithDefaultServiceConfig(`{
+			"loadBalancingConfig": [{"mokv": {}}]
+		}`),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(10*1024*1024),
+			grpc.MaxCallSendMsgSize(10*1024*1024),
+		),
 	)
 	if err != nil {
 		b.Fatalf("failed to connect: %v", err)

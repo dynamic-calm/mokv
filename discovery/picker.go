@@ -1,10 +1,10 @@
 package discovery
 
 import (
-	"log/slog"
 	"strings"
 	"sync/atomic"
 
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
 )
@@ -20,7 +20,10 @@ func init() {
 var _ base.PickerBuilder = (*Builder)(nil)
 
 func (b *Builder) Build(info base.PickerBuildInfo) balancer.Picker {
-	slog.Info("building picker", "ready_count", len(info.ReadySCs))
+	log.Info().
+		Int("ready_count", len(info.ReadySCs)).
+		Msg("building picker")
+
 	var leader balancer.SubConn
 	var followers []balancer.SubConn
 
@@ -49,6 +52,7 @@ var _ balancer.Picker = (*Picker)(nil)
 
 func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	var result balancer.PickResult
+
 	if p.leader == nil && len(p.followers) == 0 {
 		return result, balancer.ErrNoSubConnAvailable
 	}
@@ -59,36 +63,43 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 
 	// No available connections
 	if p.leader == nil && len(p.followers) == 0 {
-		slog.Debug("pick failed: no available subconns",
-			"method", methodName)
+		log.Debug().
+			Str("method", methodName).
+			Msg("pick failed: no available subconns")
 		return result, balancer.ErrNoSubConnAvailable
 	}
 
 	// Write operations must go to leader
 	if isWrite {
 		if p.leader == nil {
-			slog.Debug("pick failed: write operation but no leader",
-				"method", methodName)
+			log.Debug().
+				Str("method", methodName).
+				Msg("pick failed: write operation but no leader")
 			return result, balancer.ErrNoSubConnAvailable
 		}
 		result.SubConn = p.leader
-		slog.Debug("picked leader for write", "method", methodName)
+		log.Debug().
+			Str("method", methodName).
+			Msg("picked leader for write")
 		return result, nil
 	}
 
 	// Read operations prefer followers for load distribution
 	if len(p.followers) > 0 {
 		result.SubConn = p.nextFollower()
-		slog.Debug("picked follower for read",
-			"method", methodName,
-			"follower_index", p.current%uint64(len(p.followers)))
+		log.Debug().
+			Str("method", methodName).
+			Uint64("follower_index", p.current%uint64(len(p.followers))).
+			Msg("picked follower for read")
 		return result, nil
 	}
 
 	// Fall back to leader for reads if no followers available
 	if p.leader != nil {
 		result.SubConn = p.leader
-		slog.Debug("picked leader for read (no followers)", "method", methodName)
+		log.Debug().
+			Str("method", methodName).
+			Msg("picked leader for read (no followers)")
 		return result, nil
 	}
 
