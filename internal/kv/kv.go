@@ -58,97 +58,32 @@ type KVConfig struct {
 }
 
 type KV struct {
-	cfg          *KVConfig
-	store        store.Storer
-	raft         *raft.Raft
-	batchChan    chan *BatchOperation
-	batchSize    int
-	batchTimeout time.Duration
+	cfg   *KVConfig
+	store store.Storer
+	raft  *raft.Raft
 }
 
 func New(store store.Storer, cfg *KVConfig) (*KV, error) {
 	kv := &KV{
-		cfg:          cfg,
-		store:        store,
-		batchChan:    make(chan *BatchOperation, 1000),
-		batchSize:    1000,
-		batchTimeout: 10 * time.Millisecond,
+		cfg:   cfg,
+		store: store,
 	}
 	if err := kv.setupRaft(kv.cfg.DataDir); err != nil {
 		slog.Error("failed setting up raft", "err", err)
 		return nil, err
 	}
-	// Start batch processor
-	go kv.batchProcessor()
 	return kv, nil
 }
 
-func (kv *KV) batchProcessor() {
-	var batch []*BatchOperation
-	timer := time.NewTimer(kv.batchTimeout)
-
-	for {
-		select {
-		case op := <-kv.batchChan:
-			batch = append(batch, op)
-			if len(batch) >= kv.batchSize {
-				kv.processBatch(batch)
-				batch = make([]*BatchOperation, 0, kv.batchSize)
-				timer.Reset(kv.batchTimeout)
-			}
-		case <-timer.C:
-			if len(batch) > 0 {
-				kv.processBatch(batch)
-				batch = make([]*BatchOperation, 0, kv.batchSize)
-			}
-			timer.Reset(kv.batchTimeout)
-		}
-	}
-}
-
-func (kv *KV) processBatch(batch []*BatchOperation) {
-	var buf bytes.Buffer
-
-	// Write number of operations in batch
-	binary.Write(&buf, binary.LittleEndian, uint32(len(batch)))
-
-	// Write all operations
-	for _, op := range batch {
-		// Write request type
-		buf.Write([]byte{byte(op.reqType)})
-
-		// Write key
-		keyBytes := []byte(op.key)
-		binary.Write(&buf, binary.LittleEndian, uint32(len(keyBytes)))
-		buf.Write(keyBytes)
-
-		// Write value
-		binary.Write(&buf, binary.LittleEndian, uint32(len(op.value)))
-		buf.Write(op.value)
-	}
-
-	// Single Raft Apply for all operations
-	future := kv.raft.Apply(buf.Bytes(), 10*time.Second)
-	err := future.Error()
-
-	// Distribute result back to all operations
-	for _, op := range batch {
-		op.result <- err
-	}
-}
-
 func (kv *KV) Set(key string, value []byte) error {
-	result := make(chan error, 1)
-
-	op := &BatchOperation{
-		reqType: SetRequestType,
-		key:     key,
-		value:   value,
-		result:  result,
+	// Replicate Set
+	_, err := kv.apply(SetRequestType, &api.SetRequest{Key: key, Value: value})
+	if err != nil {
+		return fmt.Errorf("failed to apply replication setting key: %s, val: %s, from kv: %w",
+			key, string(value), err,
+		)
 	}
-
-	kv.batchChan <- op
-	return <-result
+	return nil
 }
 
 func (kv *KV) Delete(key string) error {
@@ -375,45 +310,6 @@ var _ raft.FSM = (*fsm)(nil)
 
 // This will get called on every node in the cluster
 func (fsm *fsm) Apply(log *raft.Log) any {
-	buf := bytes.NewReader(log.Data)
-
-	// Check if this is a batch operation
-	if len(log.Data) > 4 {
-		var numOps uint32
-		if err := binary.Read(buf, binary.LittleEndian, &numOps); err == nil {
-			var errors []error
-
-			for i := uint32(0); i < numOps; i++ {
-				// Read request type
-				reqType := make([]byte, 1)
-				buf.Read(reqType)
-
-				// Read key
-				var keyLen uint32
-				binary.Read(buf, binary.LittleEndian, &keyLen)
-				keyBytes := make([]byte, keyLen)
-				buf.Read(keyBytes)
-
-				// Read value
-				var valueLen uint32
-				binary.Read(buf, binary.LittleEndian, &valueLen)
-				valueBytes := make([]byte, valueLen)
-				buf.Read(valueBytes)
-
-				// Apply the operation
-				switch RequestType(reqType[0]) {
-				case SetRequestType:
-					err := fsm.kv.Set(string(keyBytes), valueBytes)
-					errors = append(errors, err)
-				case DeleteRequestType:
-					err := fsm.kv.Delete(string(keyBytes))
-					errors = append(errors, err)
-				}
-			}
-			return errors
-		}
-	}
-
 	reqType := RequestType(log.Data[0])
 	switch reqType {
 	case SetRequestType:
