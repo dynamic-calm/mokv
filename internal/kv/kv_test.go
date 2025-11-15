@@ -225,11 +225,11 @@ func TestDistributedKVReplication(t *testing.T) {
 	// Read from node2. Since it left no data should be replicated.
 	value, err = node2.Get("test-key2")
 	if err == nil {
-		t.Fatalf("we should no have be able to read the data from a node that left the cluster: %v", err)
+		t.Fatalf("we should not be able to read the data from a node that left the cluster: %v", err)
 	}
 
 	if string(value) == "test-value2" {
-		t.Errorf("we read the data from a node not in the cluser")
+		t.Errorf("we read the data from a node not in the cluster")
 	}
 
 }
