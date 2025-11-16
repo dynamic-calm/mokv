@@ -33,9 +33,9 @@ type ServerProvider interface {
 type RequestType uint8
 
 const (
-	SetRequestType    RequestType = 0
-	DeleteRequestType RequestType = 1
-	lenWidth                      = 8
+	RequestTypeSet RequestType = iota
+	RequestTypeDelete
+	lenWidth = 8
 )
 
 type BatchOperation struct {
@@ -45,14 +45,16 @@ type BatchOperation struct {
 	result  chan error
 }
 
+type RaftConfig struct {
+	raft.Config
+	StreamLayer *StreamLayer
+	Bootstrap   bool
+	BindAddr    string
+	RPCPort     string
+}
+
 type KVConfig struct {
-	Raft struct {
-		raft.Config
-		StreamLayer
-		Bootstrap bool
-		BindAddr  string
-		RPCPort   string
-	}
+	Raft    RaftConfig
 	DataDir string
 }
 
@@ -76,9 +78,10 @@ func New(store store.Storer, cfg *KVConfig) (*KV, error) {
 
 func (kv *KV) Set(key string, value []byte) error {
 	// Replicate Set
-	_, err := kv.apply(SetRequestType, &api.SetRequest{Key: key, Value: value})
+	_, err := kv.apply(RequestTypeSet, &api.SetRequest{Key: key, Value: value})
 	if err != nil {
-		return fmt.Errorf("failed to apply replication setting key: %s, val: %s, from kv: %w",
+		return fmt.Errorf(
+			"failed to apply replication setting key: %s, val: %s, from kv: %w",
 			key, string(value), err,
 		)
 	}
@@ -87,7 +90,7 @@ func (kv *KV) Set(key string, value []byte) error {
 
 func (kv *KV) Delete(key string) error {
 	// Replicate Delete
-	_, err := kv.apply(DeleteRequestType, &api.DeleteRequest{Key: key})
+	_, err := kv.apply(RequestTypeDelete, &api.DeleteRequest{Key: key})
 	if err != nil {
 		return fmt.Errorf("failed to apply replication deleting key: %s from kv: %w", key, err)
 	}
@@ -262,7 +265,7 @@ func (kv *KV) setupRaft(dataDir string) error {
 	maxPool := 5
 	timeout := 10 * time.Second
 	transport := raft.NewNetworkTransport(
-		&kv.cfg.Raft.StreamLayer,
+		kv.cfg.Raft.StreamLayer,
 		maxPool,
 		timeout,
 		os.Stderr,
@@ -333,9 +336,9 @@ var _ raft.FSM = (*fsm)(nil)
 func (fsm *fsm) Apply(log *raft.Log) any {
 	reqType := RequestType(log.Data[0])
 	switch reqType {
-	case SetRequestType:
+	case RequestTypeSet:
 		return fsm.applySet(log.Data[1:])
-	case DeleteRequestType:
+	case RequestTypeDelete:
 		return fsm.applyDelete(log.Data[1:])
 	}
 	return nil
@@ -453,9 +456,11 @@ func (s *StreamLayer) Accept() (net.Conn, error) {
 	b := make([]byte, 1)
 	_, err = conn.Read(b)
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 	if !bytes.Equal([]byte{byte(RaftRPC)}, b) {
+		conn.Close()
 		return nil, errors.New("not a raft rpc")
 	}
 	return conn, nil

@@ -8,7 +8,7 @@ rm -rf /tmp/mokv3
 bin/mokv --config-file=./example/config.yaml &
 PID1=$!
 echo "Started node 1 with PID $PID1"
-sleep 5  # Wait 5 seconds for the bootstrap node to initialize
+sleep 3  # Wait 3 seconds for the bootstrap node to initialize
 
 # Start node 2 and wait for it to join
 bin/mokv --config-file=./example/config2.yaml &

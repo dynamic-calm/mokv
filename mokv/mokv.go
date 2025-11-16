@@ -97,7 +97,7 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 	grpcLn := myCmux.Match(cmux.Any())
 
 	// Setup Raft stream layer
-	kvCFG.Raft.StreamLayer = *kv.NewStreamLayer(raftLn)
+	kvCFG.Raft.StreamLayer = kv.NewStreamLayer(raftLn)
 
 	// Initialize store and KV
 	store := store.New()
