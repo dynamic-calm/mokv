@@ -30,7 +30,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	cfg1.Raft.RPCPort = "3000"
 	cfg1.Raft.LocalID = "node-1"
 	cfg1.Raft.Bootstrap = true
-	cfg1.Raft.StreamLayer = *kv.NewStreamLayer(raftLn1)
+	cfg1.Raft.StreamLayer = kv.NewStreamLayer(raftLn1)
 
 	node1, err := kv.New(store1, cfg1)
 	if err != nil {
@@ -59,7 +59,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	cfg2.Raft.RPCPort = "3001"
 	cfg2.Raft.LocalID = "node-2"
 	cfg2.Raft.Bootstrap = false
-	cfg2.Raft.StreamLayer = *kv.NewStreamLayer(raftLn2)
+	cfg2.Raft.StreamLayer = kv.NewStreamLayer(raftLn2)
 
 	node2, err := kv.New(store2, cfg2)
 	if err != nil {
@@ -146,7 +146,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	cfg3.Raft.RPCPort = "3002"
 	cfg3.Raft.LocalID = "node-3"
 	cfg3.Raft.Bootstrap = false
-	cfg3.Raft.StreamLayer = *kv.NewStreamLayer(raftLn3)
+	cfg3.Raft.StreamLayer = kv.NewStreamLayer(raftLn3)
 
 	node3, err := kv.New(store3, cfg3)
 	if err != nil {
