@@ -1,0 +1,54 @@
+services:
+  mokv:
+    build: .
+    command:
+      - "--bootstrap"
+
+    ports:
+      - "8400:8400"
+      - "8401:8401"
+      - "4000:4000"
+    networks:
+      - mokv-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    networks:
+      - mokv-net
+    depends_on:
+      - mokv
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - mokv-net
+    depends_on:
+      - prometheus
+      - mokv
+
+networks:
+  mokv-net:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
