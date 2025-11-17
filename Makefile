@@ -1,6 +1,8 @@
+TAG ?= 0.0.1
+
 .PHONY: compile
 compile:
-	protoc internal/api/*.proto \
+	protoc ./api/*.proto \
 		--go_out=. \
 		--go-grpc_out=. \
 		--go_opt=paths=source_relative \
@@ -26,3 +28,7 @@ perf:
 .PHONY: perf-long
 perf-long:
 	-go test -bench=. -benchtime=60s ./mokv -benchmem -run=^#
+
+.PHONY: build-docker
+build-docker:
+	docker build -t github.com/dynamic-calm/mokv:$(TAG) .
