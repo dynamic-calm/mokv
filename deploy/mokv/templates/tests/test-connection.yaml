@@ -11,5 +11,5 @@ spec:
     - name: wget
       image: busybox
       command: ['wget']
-      args: ['{{ include "mokv.fullname" . }}:{{ .Values.service.port }}']
+      args: ['{{ include "mokv.fullname" . }}:{{ .Values.rpcPort }}']
   restartPolicy: Never

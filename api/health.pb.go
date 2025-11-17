@@ -116,7 +116,7 @@ func (x *HealthCheckRequest) GetService() string {
 
 type HealthCheckResponse struct {
 	state         protoimpl.MessageState            `protogen:"open.v1"`
-	Status        HealthCheckResponse_ServingStatus `protobuf:"varint,1,opt,name=status,proto3,enum=grpc.health.v1.HealthCheckResponse_ServingStatus" json:"status,omitempty"`
+	Status        HealthCheckResponse_ServingStatus `protobuf:"varint,1,opt,name=status,proto3,enum=api.HealthCheckResponse_ServingStatus" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -162,18 +162,18 @@ var File_api_health_proto protoreflect.FileDescriptor
 
 const file_api_health_proto_rawDesc = "" +
 	"\n" +
-	"\x10api/health.proto\x12\x0egrpc.health.v1\".\n" +
+	"\x10api/health.proto\x12\x03api\".\n" +
 	"\x12HealthCheckRequest\x12\x18\n" +
-	"\aservice\x18\x01 \x01(\tR\aservice\"\x9c\x01\n" +
-	"\x13HealthCheckResponse\x12I\n" +
-	"\x06status\x18\x01 \x01(\x0e21.grpc.health.v1.HealthCheckResponse.ServingStatusR\x06status\":\n" +
+	"\aservice\x18\x01 \x01(\tR\aservice\"\x91\x01\n" +
+	"\x13HealthCheckResponse\x12>\n" +
+	"\x06status\x18\x01 \x01(\x0e2&.api.HealthCheckResponse.ServingStatusR\x06status\":\n" +
 	"\rServingStatus\x12\v\n" +
 	"\aUNKNOWN\x10\x00\x12\v\n" +
 	"\aSERVING\x10\x01\x12\x0f\n" +
-	"\vNOT_SERVING\x10\x022\xae\x01\n" +
-	"\x06Health\x12P\n" +
-	"\x05Check\x12\".grpc.health.v1.HealthCheckRequest\x1a#.grpc.health.v1.HealthCheckResponse\x12R\n" +
-	"\x05Watch\x12\".grpc.health.v1.HealthCheckRequest\x1a#.grpc.health.v1.HealthCheckResponse0\x01B\"Z github.com/dynamic-calm/mokv/apib\x06proto3"
+	"\vNOT_SERVING\x10\x022\x82\x01\n" +
+	"\x06Health\x12:\n" +
+	"\x05Check\x12\x17.api.HealthCheckRequest\x1a\x18.api.HealthCheckResponse\x12<\n" +
+	"\x05Watch\x12\x17.api.HealthCheckRequest\x1a\x18.api.HealthCheckResponse0\x01B\"Z github.com/dynamic-calm/mokv/apib\x06proto3"
 
 var (
 	file_api_health_proto_rawDescOnce sync.Once
@@ -190,16 +190,16 @@ func file_api_health_proto_rawDescGZIP() []byte {
 var file_api_health_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_api_health_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_api_health_proto_goTypes = []any{
-	(HealthCheckResponse_ServingStatus)(0), // 0: grpc.health.v1.HealthCheckResponse.ServingStatus
-	(*HealthCheckRequest)(nil),             // 1: grpc.health.v1.HealthCheckRequest
-	(*HealthCheckResponse)(nil),            // 2: grpc.health.v1.HealthCheckResponse
+	(HealthCheckResponse_ServingStatus)(0), // 0: api.HealthCheckResponse.ServingStatus
+	(*HealthCheckRequest)(nil),             // 1: api.HealthCheckRequest
+	(*HealthCheckResponse)(nil),            // 2: api.HealthCheckResponse
 }
 var file_api_health_proto_depIdxs = []int32{
-	0, // 0: grpc.health.v1.HealthCheckResponse.status:type_name -> grpc.health.v1.HealthCheckResponse.ServingStatus
-	1, // 1: grpc.health.v1.Health.Check:input_type -> grpc.health.v1.HealthCheckRequest
-	1, // 2: grpc.health.v1.Health.Watch:input_type -> grpc.health.v1.HealthCheckRequest
-	2, // 3: grpc.health.v1.Health.Check:output_type -> grpc.health.v1.HealthCheckResponse
-	2, // 4: grpc.health.v1.Health.Watch:output_type -> grpc.health.v1.HealthCheckResponse
+	0, // 0: api.HealthCheckResponse.status:type_name -> api.HealthCheckResponse.ServingStatus
+	1, // 1: api.Health.Check:input_type -> api.HealthCheckRequest
+	1, // 2: api.Health.Watch:input_type -> api.HealthCheckRequest
+	2, // 3: api.Health.Check:output_type -> api.HealthCheckResponse
+	2, // 4: api.Health.Watch:output_type -> api.HealthCheckResponse
 	3, // [3:5] is the sub-list for method output_type
 	1, // [1:3] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
