@@ -13,7 +13,7 @@ compile:
 
 .PHONY: test
 test:
-	go test -cover -race ./...
+	go test -cover -race -v ./...
 
 .PHONY: build
 build:
