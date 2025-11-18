@@ -275,8 +275,8 @@ func (kv *KV) setupRaft(dataDir string) error {
 	config.LocalID = kv.cfg.Raft.LocalID
 	config.HeartbeatTimeout = 1 * time.Second
 	config.ElectionTimeout = 3 * time.Second
-	config.LeaderLeaseTimeout = 500 * time.Millisecond // 500ms instead of 25ms
-	config.CommitTimeout = 500 * time.Millisecond      // 500ms instead of 50ms
+	config.LeaderLeaseTimeout = 500 * time.Millisecond
+	config.CommitTimeout = 500 * time.Millisecond
 	config.SnapshotInterval = 120 * time.Second
 	config.SnapshotThreshold = 8192
 	config.MaxAppendEntries = 64
