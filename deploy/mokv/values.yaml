@@ -1,0 +1,9 @@
+# Default values for mokv.
+image:
+  repository: mokv
+  tag: latest
+  pullPolicy: Never
+serfPort: 8401
+rpcPort: 8400
+replicas: 3
+storage: 1Gi

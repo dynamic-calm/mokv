@@ -26,7 +26,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	cfg1 := &kv.KVConfig{
 		DataDir: dir1,
 	}
-	cfg1.Raft.BindAddr = "127.0.0.1:3001"
+	cfg1.Raft.BindAddr = ln1.Addr().String()
 	cfg1.Raft.RPCPort = "3000"
 	cfg1.Raft.LocalID = "node-1"
 	cfg1.Raft.Bootstrap = true
@@ -55,7 +55,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	cfg2 := &kv.KVConfig{
 		DataDir: dir2,
 	}
-	cfg2.Raft.BindAddr = "127.0.0.1:3002"
+	cfg2.Raft.BindAddr = ln2.Addr().String()
 	cfg2.Raft.RPCPort = "3001"
 	cfg2.Raft.LocalID = "node-2"
 	cfg2.Raft.Bootstrap = false
@@ -76,7 +76,7 @@ func TestDistributedKVReplication(t *testing.T) {
 
 	// Join node2 to the cluster
 	dkv1 := node1
-	err = dkv1.Join("node-2", "127.0.0.1:3002")
+	err = dkv1.Join("node-2", cfg2.Raft.BindAddr)
 	if err != nil {
 		t.Fatalf("failed to join node 2 to cluster: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	cfg3 := &kv.KVConfig{
 		DataDir: dir3,
 	}
-	cfg3.Raft.BindAddr = "127.0.0.1:3003"
+	cfg3.Raft.BindAddr = ln3.Addr().String()
 	cfg3.Raft.RPCPort = "3002"
 	cfg3.Raft.LocalID = "node-3"
 	cfg3.Raft.Bootstrap = false
@@ -162,7 +162,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Join node3 to the cluster
-	err = dkv1.Join("node-3", "127.0.0.1:3003")
+	err = dkv1.Join("node-3", cfg3.Raft.BindAddr)
 	if err != nil {
 		t.Fatalf("failed to join node3  to cluster: %v", err)
 	}

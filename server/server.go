@@ -12,6 +12,8 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	status "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -39,7 +41,6 @@ func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
 }
 
 func New(KV kv.KVI, opts ...grpc.ServerOption) *grpc.Server {
-	zerolog.SetGlobalLevel(zerolog.WarnLevel)
 	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
 	logOpts := []logging.Option{
 		logging.WithLogOnEvents(logging.FinishCall),
@@ -54,8 +55,12 @@ func New(KV kv.KVI, opts ...grpc.ServerOption) *grpc.Server {
 	), grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
 		logging.UnaryServerInterceptor(interceptorLogger(logger), logOpts...),
 	)))
-
 	s := grpc.NewServer(opts...)
+
+	healthSrv := health.NewServer()
+	healthSrv.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	healthpb.RegisterHealthServer(s, healthSrv)
+
 	serverGetter := NewServerGetter(KV)
 	srv := &kvServer{
 		KV:           KV,

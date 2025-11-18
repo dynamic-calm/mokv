@@ -54,31 +54,36 @@ type MOKV struct {
 }
 
 func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
-	// Initialize Prometheus exporter
-	exp, err := prometheus.New()
+	// Setup network listener
+	host, _, err := net.SplitHostPort(cfg.BindAddr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start prometheus exporter: %w", err)
+		return nil, fmt.Errorf("failed to parse bind address: %w", err)
 	}
 
-	meterProvider := metric.NewMeterProvider(metric.WithReader(exp))
-
-	// Configure KV store
-	rpcPort := strconv.Itoa(cfg.RPCPort)
-	kvCFG := &kv.KVConfig{DataDir: cfg.DataDir}
-	kvCFG.Raft.BindAddr = cfg.BindAddr
-	kvCFG.Raft.RPCPort = rpcPort
-	kvCFG.Raft.LocalID = raft.ServerID(cfg.NodeName)
-	kvCFG.Raft.Bootstrap = cfg.Bootstrap
-
-	// Setup network listener
-	rpcAddr := net.JoinHostPort("127.0.0.1", rpcPort)
+	// For listening, bind to all interfaces
+	rpcAddr := fmt.Sprintf(":%d", cfg.RPCPort)
 	listener, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create listener: %w", err)
 	}
 
+	// For Raft advertisement, use FQDN with RPC port
+	raftAdvertiseAddr := fmt.Sprintf("%s:%d", host, cfg.RPCPort)
+
+	log.Info().
+		Str("listenAddr", rpcAddr).
+		Str("raftAdvertiseAddr", raftAdvertiseAddr).
+		Msg("network configuration")
 	// Setup connection multiplexer
 	myCmux := cmux.New(listener)
+
+	// Configure KV store
+	rpcPort := strconv.Itoa(cfg.RPCPort)
+	kvCFG := &kv.KVConfig{DataDir: cfg.DataDir}
+	kvCFG.Raft.BindAddr = raftAdvertiseAddr
+	kvCFG.Raft.RPCPort = rpcPort
+	kvCFG.Raft.LocalID = raft.ServerID(cfg.NodeName)
+	kvCFG.Raft.Bootstrap = cfg.Bootstrap
 
 	// Configure Raft listener.
 	// If the first byte of the incoming connection is our RaftRPC constant,
@@ -106,6 +111,14 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 		return nil, fmt.Errorf("failed to create KV store: %w", err)
 	}
 
+	// Initialize Prometheus exporter
+	exp, err := prometheus.New()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start prometheus exporter: %w", err)
+	}
+
+	meterProvider := metric.NewMeterProvider(metric.WithReader(exp))
+
 	// Configure gRPC server
 	serverOpts := []grpc.ServerOption{
 		opentelemetry.ServerOption(
@@ -124,7 +137,7 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 		NodeName: cfg.NodeName,
 		BindAddr: cfg.BindAddr,
 		Tags: map[string]string{
-			"rpc_addr": rpcAddr,
+			"rpc_addr": raftAdvertiseAddr,
 		},
 		StartJoinAddrs: cfg.StartJoinAddrs,
 	})

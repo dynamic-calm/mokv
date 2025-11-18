@@ -47,9 +47,9 @@ type BatchOperation struct {
 
 type RaftConfig struct {
 	raft.Config
+	BindAddr    string
 	StreamLayer *StreamLayer
 	Bootstrap   bool
-	BindAddr    string
 	RPCPort     string
 }
 
@@ -273,10 +273,10 @@ func (kv *KV) setupRaft(dataDir string) error {
 
 	config := raft.DefaultConfig()
 	config.LocalID = kv.cfg.Raft.LocalID
-	config.HeartbeatTimeout = 50 * time.Millisecond
-	config.ElectionTimeout = 150 * time.Millisecond
-	config.LeaderLeaseTimeout = 25 * time.Millisecond
-	config.CommitTimeout = 50 * time.Millisecond
+	config.HeartbeatTimeout = 1 * time.Second
+	config.ElectionTimeout = 3 * time.Second
+	config.LeaderLeaseTimeout = 500 * time.Millisecond
+	config.CommitTimeout = 500 * time.Millisecond
 	config.SnapshotInterval = 120 * time.Second
 	config.SnapshotThreshold = 8192
 	config.MaxAppendEntries = 64
@@ -315,7 +315,7 @@ func (kv *KV) setupRaft(dataDir string) error {
 			Servers: []raft.Server{
 				{
 					ID:      config.LocalID,
-					Address: transport.LocalAddr(),
+					Address: raft.ServerAddress(kv.cfg.Raft.BindAddr),
 				},
 			},
 		}

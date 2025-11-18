@@ -2,8 +2,6 @@ package mokv_test
 
 import (
 	"bytes"
-	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -18,7 +16,7 @@ import (
 )
 
 func TestRunE2E(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Setup test data directory
 	testDir := t.TempDir()
@@ -39,19 +37,19 @@ func TestRunE2E(t *testing.T) {
 
 	m, err := mokv.New(cfg, os.Getenv)
 	if err != nil {
-		t.Fatalf("failed to creating new mokv: %s", err)
+		t.Fatalf("failed to create new mokv: %s", err)
 	}
 
 	go func() {
 		m.Listen(ctx)
 	}()
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	// Setup client connection
 	rpcAddr := "127.0.0.1:" + strconv.Itoa(cfg.RPCPort)
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("mokv://%s", rpcAddr),
+		rpcAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
