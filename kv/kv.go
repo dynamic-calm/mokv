@@ -141,10 +141,18 @@ func (kv *KV) GetServers() ([]*api.Server, error) {
 	}
 	var servers []*api.Server
 	for _, server := range future.Configuration().Servers {
+		_, leaderID := kv.raft.LeaderWithID()
+
+		log.Debug().
+			Str("server address", string(server.Address)).
+			Str("server.ID", string(server.ID)).
+			Str("leaderID", string(leaderID)).
+			Msg("got server from list")
+
 		servers = append(servers, &api.Server{
 			Id:       string(server.ID),
 			RpcAddr:  string(server.Address),
-			IsLeader: kv.raft.Leader() == server.Address,
+			IsLeader: leaderID == server.ID,
 		})
 	}
 	return servers, nil

@@ -32,7 +32,7 @@ func main() {
 		log.Fatal(err)
 	}
 	for _, s := range servers.Servers {
-		fmt.Printf("\t- %v -> is leader: %v\n", s, s.IsLeader)
+		fmt.Printf("\t- %v -> is leader: %v\n", s.RpcAddr, s.IsLeader)
 	}
 
 	// Set
