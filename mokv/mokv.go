@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/stats/opentelemetry"
 )
 
+// Config holds the configuration parameters for the MOKV server node.
 type Config struct {
 	DataDir        string
 	NodeName       string
@@ -39,8 +40,10 @@ type Config struct {
 	Bootstrap      bool
 }
 
+// GetEnv defines a function signature for retrieving environment variables.
 type GetEnv func(string) string
 
+// MOKV represents the main server instance orchestrating gRPC, Raft, and Discovery services.
 type MOKV struct {
 	cfg           *Config
 	getEnv        GetEnv
@@ -53,28 +56,26 @@ type MOKV struct {
 	membership    *discovery.Membership
 }
 
+// New initializes a new MOKV server instance with the provided configuration.
 func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
-	// Setup network listener
 	host, _, err := net.SplitHostPort(cfg.BindAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse bind address: %w", err)
 	}
 
-	// For listening, bind to all interfaces
 	rpcAddr := fmt.Sprintf(":%d", cfg.RPCPort)
 	listener, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create listener: %w", err)
 	}
 
-	// For Raft advertisement, use FQDN with RPC port
 	raftAdvertiseAddr := fmt.Sprintf("%s:%d", host, cfg.RPCPort)
 
 	log.Info().
 		Str("listenAddr", rpcAddr).
 		Str("raftAdvertiseAddr", raftAdvertiseAddr).
 		Msg("network configuration")
-	// Setup connection multiplexer
+
 	myCmux := cmux.New(listener)
 
 	// Configure KV store
