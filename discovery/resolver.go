@@ -15,7 +15,14 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-const Name = "mokv"
+const (
+	// Name is the URL scheme used for the custom Mokv resolver (e.g., mokv:///Target).
+	Name = "mokv"
+
+	// serviceConfigJSON defines the default service configuration, enabling the custom
+	// load balancer by default for this scheme.
+	serviceConfigJSON = `{"loadBalancingConfig":[{"%s":{}}]}`
+)
 
 type Resolver struct {
 	mu            sync.Mutex
@@ -31,6 +38,9 @@ func init() {
 
 var _ resolver.Builder = (*Resolver)(nil)
 
+// Build creates a new resolver for the given target.
+// It establishes a connection to the seed address provided in the
+// target to fetch initial members.
 func (r *Resolver) Build(
 	target resolver.Target,
 	cc resolver.ClientConn,
@@ -49,7 +59,7 @@ func (r *Resolver) Build(
 		)
 	}
 	r.serviceConfig = r.clientConn.ParseServiceConfig(
-		fmt.Sprintf(`{"loadBalancingConfig":[{"%s":{}}]}`, Name),
+		fmt.Sprintf(serviceConfigJSON, Name),
 	)
 	var err error
 	r.resolverConn, err = grpc.NewClient(target.URL.Host, dialOpts...)
@@ -66,6 +76,8 @@ func (r *Resolver) Scheme() string {
 
 var _ resolver.Resolver = (*Resolver)(nil)
 
+// ResolveNow is called by gRPC to force an immediate resolution of the target.
+// It queries the cluster for the current list of servers and their leadership status.
 func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -99,6 +111,7 @@ func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 	})
 }
 
+// Close closes the resolver and the underlying connection to the discovery server.
 func (r *Resolver) Close() {
 	if err := r.resolverConn.Close(); err != nil {
 		log.Error().
