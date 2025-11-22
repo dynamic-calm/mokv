@@ -14,6 +14,7 @@ type Handler interface {
 	Leave(name string) error
 }
 
+// Config holds the configuration for the Serf-based discovery mechanism.
 type MembershipConfig struct {
 	NodeName       string
 	BindAddr       string
@@ -21,6 +22,7 @@ type MembershipConfig struct {
 	StartJoinAddrs []string
 }
 
+// Membership manages the Serf cluster membership and handles node events.
 type Membership struct {
 	MembershipConfig
 	serf    *serf.Serf
@@ -28,6 +30,7 @@ type Membership struct {
 	events  chan serf.Event
 }
 
+// NewMembership creates a new Membership instance, initializes Serf, and joins the cluster if seed addresses are provided.
 func NewMembership(h Handler, cfg MembershipConfig) (*Membership, error) {
 	m := &Membership{handler: h, MembershipConfig: cfg}
 	if err := m.setupSerf(); err != nil {
@@ -35,6 +38,20 @@ func NewMembership(h Handler, cfg MembershipConfig) (*Membership, error) {
 	}
 
 	return m, nil
+}
+
+// Members returns the list of current members in the Serf cluster.
+func (m *Membership) Members() []serf.Member {
+	return m.serf.Members()
+}
+
+// Leave gracefully causes the local node to leave the Serf cluster.
+func (m *Membership) Leave() error {
+	return m.serf.Leave()
+}
+
+func (m *Membership) isLocal(member serf.Member) bool {
+	return m.serf.LocalMember().Name == member.Name
 }
 
 func (m *Membership) setupSerf() error {
@@ -122,16 +139,4 @@ func (m *Membership) handleLeave(member serf.Member) {
 	if err != nil {
 		log.Error().Err(err).Str("member", member.Name).Msg("failed to process leave")
 	}
-}
-
-func (m *Membership) isLocal(member serf.Member) bool {
-	return m.serf.LocalMember().Name == member.Name
-}
-
-func (m *Membership) Members() []serf.Member {
-	return m.serf.Members()
-}
-
-func (m *Membership) Leave() error {
-	return m.serf.Leave()
 }

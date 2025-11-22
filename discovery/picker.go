@@ -9,8 +9,6 @@ import (
 	"google.golang.org/grpc/balancer/base"
 )
 
-type Builder struct{}
-
 func init() {
 	balancer.Register(
 		base.NewBalancerBuilder(Name, &Builder{}, base.Config{}),
@@ -19,6 +17,11 @@ func init() {
 
 var _ base.PickerBuilder = (*Builder)(nil)
 
+// Builder implements base.PickerBuilder to construct a custom Picker.
+type Builder struct{}
+
+// Build creates a new Picker instance using the provided build information.
+// It segregates sub-connections into leader and followers based on attributes.
 func (b *Builder) Build(info base.PickerBuildInfo) balancer.Picker {
 	log.Info().
 		Int("ready_count", len(info.ReadySCs)).
@@ -42,6 +45,9 @@ func (b *Builder) Build(info base.PickerBuildInfo) balancer.Picker {
 	}
 }
 
+// Picker implements balancer.Picker to handle RPC load balancing logic.
+// It routes write operations to the leader and read operations to followers
+// in a round-robin fashion.
 type Picker struct {
 	leader    balancer.SubConn
 	followers []balancer.SubConn
@@ -50,6 +56,9 @@ type Picker struct {
 
 var _ balancer.Picker = (*Picker)(nil)
 
+// Pick selects the appropriate sub-connection for the RPC.
+// It inspects the method name to determine if the operation is a
+// write (Set/Delete) or a read.
 func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	var result balancer.PickResult
 

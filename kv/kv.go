@@ -30,12 +30,26 @@ type ServerProvider interface {
 	GetServers() ([]*api.Server, error)
 }
 
+const (
+	// RaftRPC is the first byte sent on a connection to identify it as a Raft command
+	// for the connection multiplexer.
+	RaftRPC = 1
+
+	// RetainSnapshotCount defines how many snapshots to retain.
+	RetainSnapshotCount = 2
+
+	// RaftTimeout defines the generic timeout for Raft operations.
+	RaftTimeout = 10 * time.Second
+
+	lenWidth = 8
+)
+
+// RequestType identifies the type of operation being applied to the Raft log.
 type RequestType uint8
 
 const (
 	RequestTypeSet RequestType = iota
 	RequestTypeDelete
-	lenWidth = 8
 )
 
 type BatchOperation struct {
@@ -45,6 +59,7 @@ type BatchOperation struct {
 	result  chan error
 }
 
+// RaftConfig holds configuration specific to the Raft consensus mechanism.
 type RaftConfig struct {
 	raft.Config
 	BindAddr    string
@@ -53,17 +68,20 @@ type RaftConfig struct {
 	RPCPort     string
 }
 
+// KVConfig holds the general configuration for the KV store.
 type KVConfig struct {
 	Raft    RaftConfig
 	DataDir string
 }
 
+// KV is a distributed key-value store implementation using Raft consensus.
 type KV struct {
 	cfg   *KVConfig
 	store store.Storer
 	raft  *raft.Raft
 }
 
+// New creates and initializes a new distributed KV.
 func New(store store.Storer, cfg *KVConfig) (*KV, error) {
 	kv := &KV{
 		cfg:   cfg,
@@ -76,8 +94,13 @@ func New(store store.Storer, cfg *KVConfig) (*KV, error) {
 	return kv, nil
 }
 
+// Get retrieves a value from the local store.
+func (kv *KV) Get(key string) ([]byte, error) {
+	return kv.store.Get(key)
+}
+
+// Set applies a set operation to the distributed store via Raft.
 func (kv *KV) Set(key string, value []byte) error {
-	// Replicate Set
 	_, err := kv.apply(RequestTypeSet, &api.SetRequest{Key: key, Value: value})
 	if err != nil {
 		return fmt.Errorf(
@@ -88,6 +111,7 @@ func (kv *KV) Set(key string, value []byte) error {
 	return nil
 }
 
+// Delete applies a delete operation to the distributed store via Raft.
 func (kv *KV) Delete(key string) error {
 	// Replicate Delete
 	_, err := kv.apply(RequestTypeDelete, &api.DeleteRequest{Key: key})
@@ -97,43 +121,12 @@ func (kv *KV) Delete(key string) error {
 	return nil
 }
 
-func (kv *KV) Get(key string) ([]byte, error) {
-	return kv.store.Get(key)
-}
-
+// List returns a channel that streams all values from the local store.
 func (kv *KV) List() <-chan []byte {
 	return kv.store.List()
 }
 
-func (kv *KV) apply(reqType RequestType, req proto.Message) (any, error) {
-	var buf bytes.Buffer
-	// Write the reqType byte to the buffer to differentiate from other requests
-	// later on
-	_, err := buf.Write([]byte{byte(reqType)})
-	if err != nil {
-		return nil, err
-	}
-	b, err := proto.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	// Add the actual request after that first byte
-	_, err = buf.Write(b)
-	if err != nil {
-		return nil, err
-	}
-	timeout := 10 * time.Second
-	future := kv.raft.Apply(buf.Bytes(), timeout)
-	if future.Error() != nil {
-		return nil, future.Error()
-	}
-	res := future.Response()
-	if err, ok := res.(error); ok {
-		return nil, err
-	}
-	return res, nil
-}
-
+// GetServers retrieves the current list of servers in the Raft configuration.
 func (kv *KV) GetServers() ([]*api.Server, error) {
 	future := kv.raft.GetConfiguration()
 	if err := future.Error(); err != nil {
@@ -158,6 +151,8 @@ func (kv *KV) GetServers() ([]*api.Server, error) {
 	return servers, nil
 }
 
+// Join adds a new node (voter) to the Raft cluster.
+// This operation must be executed on the cluster leader.
 func (kv *KV) Join(id, addr string) error {
 	log.Info().
 		Str("id", id).
@@ -196,35 +191,28 @@ func (kv *KV) Join(id, addr string) error {
 		}
 	}
 
-	log.Info().
-		Str("id", id).
-		Str("addr", addr).
-		Msg("adding voter to cluster")
-
-	addFuture := kv.raft.AddVoter(serverID, serverAddr, 0, time.Second*10)
+	addFuture := kv.raft.AddVoter(serverID, serverAddr, 0, RaftTimeout)
 	if err := addFuture.Error(); err != nil {
 		return fmt.Errorf("failed to add voter: %w", err)
 	}
 
-	log.Info().
-		Str("id", id).
-		Msg("successfully added voter")
+	log.Info().Str("id", id).Msg("successfully added voter")
 	return nil
 }
 
+// Leave removes a node from the Raft cluster.
 func (kv *KV) Leave(id string) error {
 	removeFuture := kv.raft.RemoveServer(raft.ServerID(id), 0, 0)
 	return removeFuture.Error()
 }
 
+// Close gracefully shuts down the Raft node.
 func (kv *KV) Close() error {
 	f := kv.raft.Shutdown()
-	if err := f.Error(); err != nil {
-		return err
-	}
-	return nil
+	return f.Error()
 }
 
+// WaitForLeader blocks until the Raft node detects a leader in the cluster or times out.
 func (kv *KV) WaitForLeader(timeout time.Duration) error {
 	timeoutc := time.After(timeout)
 	ticker := time.NewTicker(time.Second)
@@ -241,9 +229,36 @@ func (kv *KV) WaitForLeader(timeout time.Duration) error {
 	}
 }
 
-type fsm struct {
-	kv      store.Storer
-	dataDir string
+// apply encodes the request and submits it to Raft.
+func (kv *KV) apply(reqType RequestType, req proto.Message) (any, error) {
+	var buf bytes.Buffer
+	// Write the reqType byte to the buffer to differentiate from other requests
+	// later on
+	if _, err := buf.Write([]byte{byte(reqType)}); err != nil {
+		return nil, err
+	}
+
+	b, err := proto.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add the actual request after that first byte
+	if _, err := buf.Write(b); err != nil {
+		return nil, err
+	}
+
+	future := kv.raft.Apply(buf.Bytes(), RaftTimeout)
+	if err := future.Error(); err != nil {
+		return nil, err
+	}
+
+	res := future.Response()
+	if err, ok := res.(error); ok {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 func (kv *KV) setupRaft(dataDir string) error {
@@ -261,10 +276,9 @@ func (kv *KV) setupRaft(dataDir string) error {
 	if err != nil {
 		return err
 	}
-	retain := 1
 	snapshotStore, err := raft.NewFileSnapshotStore(
 		filepath.Join(dataDir, "raft"),
-		retain,
+		RetainSnapshotCount,
 		os.Stderr,
 	)
 	if err != nil {
@@ -337,9 +351,15 @@ func (kv *KV) setupRaft(dataDir string) error {
 	return nil
 }
 
+type fsm struct {
+	kv      store.Storer
+	dataDir string
+}
+
 // Finite State Machine
 var _ raft.FSM = (*fsm)(nil)
 
+// Apply applies a Raft log entry to the local KV store.
 // This will get called on every node in the cluster
 func (fsm *fsm) Apply(log *raft.Log) any {
 	reqType := RequestType(log.Data[0])
@@ -379,6 +399,7 @@ func (fsm *fsm) applyDelete(b []byte) any {
 	return &api.DeleteResponse{Ok: true}
 }
 
+// Snapshot creates a snapshot of the current state of the store.
 func (fsm *fsm) Snapshot() (raft.FSMSnapshot, error) {
 	r := chanToReader(fsm.kv.List())
 	return &snapshot{reader: r}, nil
@@ -400,6 +421,7 @@ func (s *snapshot) Persist(sink raft.SnapshotSink) error {
 
 func (s *snapshot) Release() {}
 
+// Restore restores the store state from a snapshot.
 func (fsm *fsm) Restore(r io.ReadCloser) error {
 	b := make([]byte, lenWidth)
 	var buf bytes.Buffer
@@ -427,8 +449,8 @@ func (fsm *fsm) Restore(r io.ReadCloser) error {
 // Stream layer
 var _ raft.StreamLayer = (*StreamLayer)(nil)
 
-const RaftRPC = 1
-
+// StreamLayer implements raft.StreamLayer to allow using a custom listener
+// (e.g., from cmux) with the Hashicorp Raft library.
 type StreamLayer struct {
 	ln net.Listener
 }
@@ -439,6 +461,8 @@ func NewStreamLayer(ln net.Listener) *StreamLayer {
 	}
 }
 
+// Dial establishes an outgoing connection to another Raft node.
+// It prepends the RaftRPC byte to identify the protocol to the remote multiplexer.
 func (s *StreamLayer) Dial(
 	addr raft.ServerAddress,
 	timeout time.Duration,
@@ -456,6 +480,9 @@ func (s *StreamLayer) Dial(
 	return conn, err
 }
 
+// Accept accepts a new incoming connection.
+// It consumes the first byte (the multiplexing header) to verify the protocol
+// and provides the clean connection to the Raft library.
 func (s *StreamLayer) Accept() (net.Conn, error) {
 	conn, err := s.ln.Accept()
 	if err != nil {
@@ -465,19 +492,22 @@ func (s *StreamLayer) Accept() (net.Conn, error) {
 	_, err = conn.Read(b)
 	if err != nil {
 		conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("failed to read raft identifier: %w", err)
+
 	}
 	if !bytes.Equal([]byte{byte(RaftRPC)}, b) {
 		conn.Close()
-		return nil, errors.New("not a raft rpc")
+		return nil, errors.New("not a raft rpc connection")
 	}
 	return conn, nil
 }
 
+// Close closes the listener.
 func (s *StreamLayer) Close() error {
 	return s.ln.Close()
 }
 
+// Addr returns the listener's network address.
 func (s *StreamLayer) Addr() net.Addr {
 	return s.ln.Addr()
 }

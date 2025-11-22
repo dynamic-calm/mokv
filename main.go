@@ -1,12 +1,8 @@
 package main
 
 import (
-	"context"
-	"net/http"
 	"os"
-	"path"
-
-	_ "net/http/pprof"
+	"path/filepath"
 
 	"github.com/dynamic-calm/mokv/mokv"
 	"github.com/rs/zerolog/log"
@@ -14,29 +10,74 @@ import (
 	"github.com/spf13/viper"
 )
 
-type cli struct {
-	Cfg
-}
+const (
+	defaultBindAddr    = "127.0.0.1:8401"
+	defaultRPCPort     = 8400
+	defaultMetricsPort = 4000
+)
 
-type Cfg struct {
-	*mokv.Config
+// CLI represents the command-line interface application context and configuration.
+type CLI struct {
+	config *mokv.Config
 }
 
 func main() {
-	cli := &cli{}
+	app := &CLI{}
 	cmd := &cobra.Command{
-		Use:     "mokv",
-		PreRunE: cli.setupConfig,
-		RunE:    cli.run,
+		Use:          "mokv",
+		Short:        "A distributed key-value store",
+		PreRunE:      app.SetupConfig,
+		RunE:         app.Run,
+		SilenceUsage: true,
 	}
 
 	if err := setupFlags(cmd); err != nil {
-		log.Fatal().Err(err).Msg("error setting up flags")
+		log.Fatal().Err(err).Msg("failed to setup flags")
 	}
 
 	if err := cmd.Execute(); err != nil {
-		log.Fatal().Err(err).Msg("error executing command")
+		log.Fatal().Err(err).Msg("failed to execute command")
 	}
+}
+
+// SetupConfig initializes the configuration by reading from the config file (if provided)
+// and merging flag values into the application configuration struct.
+func (c *CLI) SetupConfig(cmd *cobra.Command, args []string) error {
+	c.config = &mokv.Config{}
+
+	configFile, err := cmd.Flags().GetString("config-file")
+	if err != nil {
+		return err
+	}
+
+	if configFile != "" {
+		viper.SetConfigFile(configFile)
+		if err := viper.ReadInConfig(); err != nil {
+			if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+				return err
+			}
+		}
+	}
+
+	c.config.DataDir = viper.GetString("data-dir")
+	c.config.NodeName = viper.GetString("node-name")
+	c.config.BindAddr = viper.GetString("bind-addr")
+	c.config.RPCPort = viper.GetInt("rpc-port")
+	c.config.StartJoinAddrs = viper.GetStringSlice("start-join-addrs")
+	c.config.Bootstrap = viper.GetBool("bootstrap")
+	c.config.MetricsPort = viper.GetInt("metrics-port")
+
+	return nil
+}
+
+// Run executes the main application logic, starting mokv service.
+func (c *CLI) Run(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	service, err := mokv.New(c.config, os.Getenv)
+	if err != nil {
+		return err
+	}
+	return service.Listen(ctx)
 }
 
 func setupFlags(cmd *cobra.Command) error {
@@ -44,62 +85,17 @@ func setupFlags(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	dataDir := path.Join(os.TempDir(), "mokv")
+
+	dataDir := filepath.Join(os.TempDir(), "mokv")
+
 	cmd.Flags().String("config-file", "", "Path to config file.")
 	cmd.Flags().String("data-dir", dataDir, "Directory to store KV and Raft data.")
 	cmd.Flags().String("node-name", hostname, "Unique server ID.")
-	cmd.Flags().String("bind-addr", "127.0.0.1:8401", "Address to bind Serf on.")
-	cmd.Flags().Int("rpc-port", 8400, "Port for RPC clients (and Raft) connections.")
+	cmd.Flags().String("bind-addr", defaultBindAddr, "Address to bind Serf on.")
+	cmd.Flags().Int("rpc-port", defaultRPCPort, "Port for RPC clients (and Raft) connections.")
 	cmd.Flags().StringSlice("start-join-addrs", nil, "Serf addresses to join.")
 	cmd.Flags().Bool("bootstrap", false, "Bootstrap the cluster.")
-	cmd.Flags().Int("metrics-port", 4000, "Port for metrics server.")
+	cmd.Flags().Int("metrics-port", defaultMetricsPort, "Port for metrics server.")
+
 	return viper.BindPFlags(cmd.Flags())
-}
-
-func (cli *cli) setupConfig(cmd *cobra.Command, args []string) error {
-	var err error
-	if cli.Config == nil {
-		cli.Config = &mokv.Config{}
-	}
-
-	configFile, err := cmd.Flags().GetString("config-file")
-	if err != nil {
-		return err
-	}
-	viper.SetConfigFile(configFile)
-	if err = viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return err
-		}
-	}
-
-	cli.DataDir = viper.GetString("data-dir")
-	cli.NodeName = viper.GetString("node-name")
-	cli.BindAddr = viper.GetString("bind-addr")
-	cli.RPCPort = viper.GetInt("rpc-port")
-	cli.StartJoinAddrs = viper.GetStringSlice("start-join-addrs")
-	cli.Bootstrap = viper.GetBool("bootstrap")
-	cli.MetricsPort = viper.GetInt("metrics-port")
-
-	return nil
-}
-
-func (cli *cli) run(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
-	mokv, err := mokv.New(cli.Config, os.Getenv)
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		log.Info().Str("addr", "loclahost:6060").Msg("starting pprof server")
-		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
-			log.Error().Err(err).Msg("pprof server failed")
-		}
-	}()
-
-	if err := mokv.Listen(ctx); err != nil {
-		return err
-	}
-	return nil
 }

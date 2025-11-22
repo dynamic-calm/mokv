@@ -40,6 +40,8 @@ func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
 	return nil, fmt.Errorf("kv store does not support getting servers")
 }
 
+// New creates and configures a new gRPC server instance with logging middleware,
+// health checks, and the registered KV service.
 func New(KV kv.KVI, opts ...grpc.ServerOption) *grpc.Server {
 	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
 	logOpts := []logging.Option{
@@ -70,6 +72,7 @@ func New(KV kv.KVI, opts ...grpc.ServerOption) *grpc.Server {
 	return s
 }
 
+// Get retrieves a value for a specific key from the store.
 func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetResponse, error) {
 	value, err := s.KV.Get(req.Key)
 	if err != nil {
@@ -78,23 +81,24 @@ func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetRespon
 	return &api.GetResponse{Value: value, Key: req.Key}, nil
 }
 
+// Set stores a key-value pair in the store.
 func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetResponse, error) {
-	err := s.KV.Set(req.Key, req.Value)
-	if err != nil {
+	if err := s.KV.Set(req.Key, req.Value); err != nil {
 		s.logger.Error().Err(err).Str("key", req.Key).Msg("set operation failed")
 		return &api.SetResponse{Ok: false}, status.Errorf(codes.Internal, "failed to set key: %v", err)
 	}
 	return &api.SetResponse{Ok: true}, nil
 }
 
+// Delete removes a key from the store.
 func (s *kvServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.DeleteResponse, error) {
-	err := s.KV.Delete(req.Key)
-	if err != nil {
+	if err := s.KV.Delete(req.Key); err != nil {
 		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err()
 	}
 	return &api.DeleteResponse{Ok: true}, nil
 }
 
+// List streams all existing key-value pairs from the store to the client.
 func (s *kvServer) List(req *emptypb.Empty, stream grpc.ServerStreamingServer[api.GetResponse]) error {
 	for value := range s.KV.List() {
 		select {
@@ -110,6 +114,7 @@ func (s *kvServer) List(req *emptypb.Empty, stream grpc.ServerStreamingServer[ap
 	return nil
 }
 
+// GetServers returns the list of nodes in the cluster.
 func (s *kvServer) GetServers(ctx context.Context, req *emptypb.Empty) (*api.GetServersResponse, error) {
 	servers, err := s.serverGetter.GetServers()
 	if err != nil {
