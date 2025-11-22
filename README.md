@@ -21,7 +21,7 @@
 ### Run it locally
 
 ```bash
-make dev
+make start
 ```
 
 This will:
