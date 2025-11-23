@@ -2,6 +2,8 @@
 
 `mökv` is a distributed, in-memory key-value store built with [`Raft`](https://github.com/hashicorp/raft) for consensus, [`Serf`](https://github.com/hashicorp/serf) for discovery, and [`gRPC`](https://github.com/grpc/grpc-go) for communication.
 
+Built it following the book [Distributed Services with Go](https://pragprog.com/titles/tjgo/distributed-services-with-go/) by Travis Jeffery.
+
 ## Features
 
 - **Distributed & Fault-Tolerant**: Data replicated across multiple nodes using Raft consensus
