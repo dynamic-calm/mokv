@@ -2,6 +2,8 @@ VERSION ?= latest
 IMAGE_NAME = mokv
 IMAGE_TAG = $(IMAGE_NAME):$(VERSION)
 
+.DEFAULT_GOAL := start
+
 .PHONY: compile
 compile:
 	protoc ./api/*.proto \
@@ -62,17 +64,4 @@ status:
 
 .PHONY: start
 start:
-	@echo "Starting up mokv..."
-	@kind get clusters | grep -q kind || (echo " Creating kind cluster..." && kind create cluster)
-	@echo "Building Docker image..."
-	@$(MAKE) docker-build
-	@echo "Loading image into kind..."
-	@$(MAKE) kind-load
-	@helm list | grep -q mokv && (echo "♻ Upgrading existing deployment..." && $(MAKE) upgrade) || (echo "Deploying mokv..." && $(MAKE) deploy)
-	@echo "Waiting for pods to be ready..."
-	@kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mokv --timeout=120s
-	@echo "mokv is running!"
-	@kubectl get pods -l app.kubernetes.io/name=mokv
-	@echo ""
-	@echo "Run 'kubectl port-forward pod/mokv-0 9400:8400' to access the cluster"
-	@echo "Then test with: go run cmd/test_kv.go -addr localhost:9400"
+	./scripts/start.sh

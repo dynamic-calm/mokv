@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "localhost:9400", "service address")
+	addr := flag.String("addr", "localhost:8400", "service address")
 	flag.Parse()
 
 	cc, err := grpc.NewClient(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -50,5 +50,4 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Got: %s = %s\n\n", getRes.Key, string(getRes.Value))
-
 }
