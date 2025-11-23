@@ -21,14 +21,6 @@ test:
 build:
 	go build -o bin/mokv .
 
-.PHONY: perf
-perf:
-	-go test -bench=. -benchtime=5s ./mokv -benchmem -run=^#
-
-.PHONY: perf-long
-perf-long:
-	-go test -bench=. -benchtime=60s ./mokv -benchmem -run=^#
-
 .PHONY: docker-build
 docker-build:
 	docker build -t $(IMAGE_TAG) .

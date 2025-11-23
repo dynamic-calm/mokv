@@ -20,16 +20,18 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-func TestAPI(t *testing.T) {
+// setupTestServer creates and starts a test server, returning cleanup function
+func setupTestServer(t *testing.T) (api.KVClient, func()) {
+	t.Helper()
+
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
-		t.Fatalf("%s", err)
+		t.Fatalf("failed to create listener: %v", err)
 	}
-	defer listener.Close()
 
 	st := store.New()
-
 	srv := server.New(st)
+
 	ready := make(chan bool)
 	go func() {
 		defer close(ready)
@@ -38,7 +40,6 @@ func TestAPI(t *testing.T) {
 			t.Errorf("server error: %v", err)
 		}
 	}()
-	defer srv.Stop()
 
 	<-ready
 
@@ -47,73 +48,65 @@ func TestAPI(t *testing.T) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		t.Fatalf("%s", err)
+		t.Fatalf("failed to create grpc client: %v", err)
 	}
-	defer clientConn.Close()
 
 	client := api.NewKVClient(clientConn)
+
+	cleanup := func() {
+		clientConn.Close()
+		srv.Stop()
+		listener.Close()
+	}
+
+	return client, cleanup
+}
+
+func TestAPI(t *testing.T) {
+	t.Parallel()
+
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
 	ctx := context.Background()
 
-	expected := []byte("test_value")
-	setReq := &api.SetRequest{Key: "test_key", Value: expected}
-	setRes, err := client.Set(ctx, setReq)
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-	if !setRes.Ok {
-		t.Fatalf("set res not ok")
-	}
+	t.Run("set and get value", func(t *testing.T) {
+		expected := []byte("test_value")
+		setReq := &api.SetRequest{Key: "test_key", Value: expected}
 
-	getReq := &api.GetRequest{Key: "test_key"}
-	getRes, err := client.Get(ctx, getReq)
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
+		setRes, err := client.Set(ctx, setReq)
+		if err != nil {
+			t.Fatalf("Set() error = %v", err)
+		}
+		if !setRes.Ok {
+			t.Fatal("Set() returned Ok = false, want true")
+		}
 
-	if string(getRes.Value) != string(expected) {
-		t.Fatalf("the values should be equal")
-	}
+		getReq := &api.GetRequest{Key: "test_key"}
+		getRes, err := client.Get(ctx, getReq)
+		if err != nil {
+			t.Fatalf("Get() error = %v", err)
+		}
 
-	getRes, err = client.Get(ctx, &api.GetRequest{Key: "unknown"})
-	if err == nil {
-		t.Fatal("we should have an error when getting not existing key")
-	}
+		if !bytes.Equal(getRes.Value, expected) {
+			t.Errorf("Get() = %q, want %q", getRes.Value, expected)
+		}
+	})
+
+	t.Run("get non-existent key returns error", func(t *testing.T) {
+		_, err := client.Get(ctx, &api.GetRequest{Key: "unknown"})
+		if err == nil {
+			t.Error("Get() with non-existent key: expected error, got nil")
+		}
+	})
 }
 
 func TestStream(t *testing.T) {
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-	defer listener.Close()
+	t.Parallel()
 
-	st := store.New()
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
 
-	server := server.New(st)
-	go func() {
-		if err := server.Serve(listener); err != nil {
-			t.Errorf("server error: %v", err)
-		}
-	}()
-	defer server.Stop()
-
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-
-	clientConn, err := grpc.NewClient(
-		listener.Addr().String(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-	defer clientConn.Close()
-
-	client := api.NewKVClient(clientConn)
 	ctx := context.Background()
 
 	testData := map[string][]byte{
@@ -122,6 +115,7 @@ func TestStream(t *testing.T) {
 		"key3": []byte("value3"),
 	}
 
+	// Populate test data
 	for k, v := range testData {
 		_, err := client.Set(ctx, &api.SetRequest{Key: k, Value: v})
 		if err != nil {
@@ -129,11 +123,13 @@ func TestStream(t *testing.T) {
 		}
 	}
 
+	// Start stream
 	stream, err := client.List(ctx, &emptypb.Empty{})
 	if err != nil {
-		t.Fatalf("failed to start list stream: %v", err)
+		t.Fatalf("List() error = %v", err)
 	}
 
+	// Collect all streamed values
 	received := make(map[string]bool)
 	for {
 		resp, err := stream.Recv()
@@ -141,7 +137,7 @@ func TestStream(t *testing.T) {
 			break
 		}
 		if err != nil {
-			t.Fatalf("error receiving from stream: %v", err)
+			t.Fatalf("stream.Recv() error = %v", err)
 		}
 
 		found := false
@@ -153,55 +149,28 @@ func TestStream(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("received unexpected value: %s", string(resp.Value))
+			t.Errorf("received unexpected value: %q", resp.Value)
 		}
 	}
 
+	// Verify all expected values were received
 	for _, v := range testData {
 		if !received[string(v)] {
-			t.Errorf("missing expected value: %s", string(v))
+			t.Errorf("missing expected value: %q", v)
 		}
 	}
-
 }
 
 func TestListErrors(t *testing.T) {
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-	defer listener.Close()
+	t.Parallel()
 
-	st := store.New()
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-
-	server := server.New(st)
-	go func() {
-		if err := server.Serve(listener); err != nil {
-			t.Errorf("server error: %v", err)
-		}
-	}()
-	defer server.Stop()
-
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-
-	clientConn, err := grpc.NewClient(
-		listener.Addr().String(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-	defer clientConn.Close()
-
-	client := api.NewKVClient(clientConn)
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
 
 	t.Run("context cancellation", func(t *testing.T) {
 		ctx := context.Background()
+
+		// Set up test data
 		_, err := client.Set(ctx, &api.SetRequest{
 			Key:   "test_key",
 			Value: []byte("test_value"),
@@ -210,12 +179,13 @@ func TestListErrors(t *testing.T) {
 			t.Fatalf("failed to set test data: %v", err)
 		}
 
+		// Create cancellable context
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		stream, err := client.List(ctx, &emptypb.Empty{})
 		if err != nil {
-			t.Fatalf("failed to start stream: %v", err)
+			t.Fatalf("List() error = %v", err)
 		}
 
 		// Cancel context before receiving
@@ -224,27 +194,31 @@ func TestListErrors(t *testing.T) {
 		// Attempt to receive - should fail with cancelled context
 		_, err = stream.Recv()
 		if status.Code(err) != codes.Canceled {
-			t.Errorf("expected canceled error, got: %v", err)
+			t.Errorf("stream.Recv() after cancel: got code %v, want %v", status.Code(err), codes.Canceled)
 		}
 	})
 
-	t.Run("server shutdown", func(t *testing.T) {
+	t.Run("server shutdown during stream", func(t *testing.T) {
+		// Note: This test reuses the parent server which will be cleaned up
+		// This is a limitation but maintains the original logic
 		stream, err := client.List(context.Background(), &emptypb.Empty{})
 		if err != nil {
-			t.Fatalf("failed to start stream: %v", err)
+			t.Fatalf("List() error = %v", err)
 		}
 
+		// Trigger cleanup in background
 		go func() {
 			time.Sleep(100 * time.Millisecond)
-			server.Stop()
+			cleanup()
 		}()
 
+		// Expect error when server shuts down
 		for {
 			_, err := stream.Recv()
 			if err != nil {
 				code := status.Code(err)
 				if code != codes.Unavailable && err != io.EOF {
-					t.Errorf("unexpected error: %v", err)
+					t.Errorf("stream.Recv() after shutdown: got code %v, want %v or EOF", code, codes.Unavailable)
 				}
 				break
 			}
@@ -253,75 +227,61 @@ func TestListErrors(t *testing.T) {
 }
 
 func TestConcurrency(t *testing.T) {
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-	defer listener.Close()
+	t.Parallel()
 
-	st := store.New()
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
 
-	server := server.New(st)
-	go func() {
-		if err := server.Serve(listener); err != nil {
-			t.Errorf("server error: %v", err)
-		}
-	}()
-	defer server.Stop()
-
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-
-	clientConn, err := grpc.NewClient(
-		listener.Addr().String(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
-	defer clientConn.Close()
-
-	client := api.NewKVClient(clientConn)
 	ctx := context.Background()
-
 	expected := []byte("test_value")
-	num := 100
+	const goroutines = 100
 
-	var wg sync.WaitGroup
-	wg.Add(num)
-	for i := 0; i < num; i++ {
-		go func(i int) {
-			defer wg.Done()
-			setReq := &api.SetRequest{Key: "test_key" + strconv.Itoa(i), Value: expected}
-			setRes, err := client.Set(ctx, setReq)
-			if err != nil {
-				t.Errorf("%s", err)
-			}
-			if !setRes.Ok {
-				t.Errorf("set res not ok")
-			}
-		}(i)
-	}
+	t.Run("concurrent sets", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Add(goroutines)
 
-	wg.Wait()
+		for i := range goroutines {
+			go func(i int) {
+				defer wg.Done()
 
-	wg.Add(num)
-	for i := 0; i < num; i++ {
-		go func(i int) {
-			defer wg.Done()
-			getReq := &api.GetRequest{Key: "test_key" + strconv.Itoa(i)}
-			getRes, err := client.Get(ctx, getReq)
-			if err != nil {
-				t.Errorf("%s", err)
-			}
-			if string(getRes.Value) != string(expected) {
-				t.Errorf("the values should be equal")
-			}
-		}(i)
-	}
-	wg.Wait()
+				setReq := &api.SetRequest{
+					Key:   "test_key" + strconv.Itoa(i),
+					Value: expected,
+				}
+				setRes, err := client.Set(ctx, setReq)
+				if err != nil {
+					t.Errorf("Set() error = %v", err)
+					return
+				}
+				if !setRes.Ok {
+					t.Errorf("Set() returned Ok = false, want true")
+				}
+			}(i)
+		}
+
+		wg.Wait()
+	})
+
+	t.Run("concurrent gets", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Add(goroutines)
+
+		for i := range goroutines {
+			go func(i int) {
+				defer wg.Done()
+
+				getReq := &api.GetRequest{Key: "test_key" + strconv.Itoa(i)}
+				getRes, err := client.Get(ctx, getReq)
+				if err != nil {
+					t.Errorf("Get() error = %v", err)
+					return
+				}
+				if !bytes.Equal(getRes.Value, expected) {
+					t.Errorf("Get() = %q, want %q", getRes.Value, expected)
+				}
+			}(i)
+		}
+
+		wg.Wait()
+	})
 }
