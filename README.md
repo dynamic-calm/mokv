@@ -21,12 +21,12 @@
 ### Run it locally
 
 ```bash
-make start
+make
 ```
 
 This will:
 
-1. Create a kind cluster (if needed)
+1. Create a kind cluster
 2. Build the Docker image
 3. Load it into kind
 4. Deploy with Helm
@@ -35,9 +35,9 @@ This will:
 Then test it:
 
 ```bash
-kubectl port-forward pod/mokv-0 9400:8400
+kubectl port-forward pod/mokv-0 9800:8400
 # In another terminal:
-go run cmd/get_servers.go -addr localhost:9400
+go run cmd/get_servers.go -addr localhost:9800
 ```
 
 ### Configuration
