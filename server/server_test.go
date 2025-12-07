@@ -21,6 +21,14 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+type testKV struct {
+	*store.Store
+}
+
+func (t *testKV) GetServers() ([]*api.Server, error) {
+	return nil, nil
+}
+
 // setupTestServer creates and starts a test server, returning cleanup function
 func setupTestServer(t *testing.T) (api.KVClient, func()) {
 	t.Helper()
@@ -30,7 +38,7 @@ func setupTestServer(t *testing.T) (api.KVClient, func()) {
 		t.Fatalf("failed to create listener: %v", err)
 	}
 
-	st := store.New()
+	st := &testKV{Store: store.New()}
 
 	srv := server.New(st, log.Logger)
 

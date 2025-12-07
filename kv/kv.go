@@ -19,9 +19,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type ServerProvider interface {
-	GetServers() ([]*api.Server, error)
-}
+
 
 const (
 	// RaftRPC is the first byte sent on a connection to identify it as a Raft command
