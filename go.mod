@@ -3,7 +3,6 @@ module github.com/dynamic-calm/mokv
 go 1.25.4
 
 require (
-	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.2.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/memberlist v0.5.3
