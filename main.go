@@ -26,8 +26,8 @@ func main() {
 	cmd := &cobra.Command{
 		Use:          "mokv",
 		Short:        "A distributed key-value store",
-		PreRunE:      app.SetupConfig,
-		RunE:         app.Run,
+		PreRunE:      app.setupConfig,
+		RunE:         app.run,
 		SilenceUsage: true,
 	}
 
@@ -40,9 +40,9 @@ func main() {
 	}
 }
 
-// SetupConfig initializes the configuration by reading from the config file (if provided)
+// setupConfig initializes the configuration by reading from the config file (if provided)
 // and merging flag values into the application configuration struct.
-func (c *CLI) SetupConfig(cmd *cobra.Command, args []string) error {
+func (c *CLI) setupConfig(cmd *cobra.Command, args []string) error {
 	c.config = &mokv.Config{}
 
 	configFile, err := cmd.Flags().GetString("config-file")
@@ -71,7 +71,7 @@ func (c *CLI) SetupConfig(cmd *cobra.Command, args []string) error {
 }
 
 // Run executes the main application logic, starting mokv service.
-func (c *CLI) Run(cmd *cobra.Command, args []string) error {
+func (c *CLI) run(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	service, err := mokv.New(c.config, os.Getenv)
 	if err != nil {
