@@ -13,7 +13,6 @@ import (
 
 	"github.com/dynamic-calm/mokv/api"
 	"github.com/dynamic-calm/mokv/logger"
-	"github.com/dynamic-calm/mokv/store"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/rs/zerolog/log"
@@ -75,15 +74,23 @@ type KVConfig struct {
 	DataDir string
 }
 
+// Storer defines the interface for a the key-value storage.
+type Storer interface {
+	Get(key string) ([]byte, error)
+	Set(key string, value []byte) error
+	Delete(key string) error
+	List() <-chan []byte
+}
+
 // KV is a distributed key-value store implementation using Raft consensus.
 type KV struct {
 	cfg   *KVConfig
-	store store.Storer
+	store Storer
 	raft  *raft.Raft
 }
 
 // New creates and initializes a new distributed KV.
-func New(store store.Storer, cfg *KVConfig) (*KV, error) {
+func New(store Storer, cfg *KVConfig) (*KV, error) {
 	kv := &KV{
 		cfg:   cfg,
 		store: store,
@@ -355,7 +362,7 @@ func (kv *KV) setupRaft(dataDir string) error {
 }
 
 type fsm struct {
-	kv      store.Storer
+	kv      Storer
 	dataDir string
 }
 
