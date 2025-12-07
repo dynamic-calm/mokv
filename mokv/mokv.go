@@ -130,7 +130,23 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 	}
 
 	// Create logger
-	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
+	lvlMap := map[string]zerolog.Level{
+		"INFO":  zerolog.InfoLevel,
+		"DEBUG": zerolog.DebugLevel,
+		"ERROR": zerolog.ErrorLevel,
+	}
+
+	lvl, ok := lvlMap[cfg.LogLevel]
+	if !ok {
+		lvl = zerolog.InfoLevel
+	}
+
+	logger := zerolog.
+		New(os.Stderr).
+		Level(lvl).
+		With().
+		Timestamp().
+		Logger()
 
 	grpcServer := server.New(kv, logger, serverOpts...)
 
