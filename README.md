@@ -11,7 +11,7 @@
 
 <!-- markdownlint-enable MD033 MD041 -->
 
-## Example
+## Client example
 
 <!-- markdownlint-disable MD010 -->
 
