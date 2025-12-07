@@ -38,6 +38,7 @@ type Config struct {
 	MetricsPort    int
 	StartJoinAddrs []string
 	Bootstrap      bool
+	LogLevel       string
 }
 
 // GetEnv defines a function signature for retrieving environment variables.
@@ -70,11 +71,6 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 	}
 
 	raftAdvertiseAddr := fmt.Sprintf("%s:%d", host, cfg.RPCPort)
-
-	log.Info().
-		Str("listenAddr", rpcAddr).
-		Str("raftAdvertiseAddr", raftAdvertiseAddr).
-		Msg("network configuration")
 
 	myCmux := cmux.New(listener)
 
@@ -131,7 +127,7 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 		),
 	}
 
-	grpcServer := server.New(kv, serverOpts...)
+	grpcServer := server.New(kv, log.Logger, serverOpts...)
 
 	// Initialize membership
 	membership, err := discovery.NewMembership(kv, discovery.MembershipConfig{

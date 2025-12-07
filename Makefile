@@ -15,7 +15,7 @@ compile:
 
 .PHONY: test
 test:
-	go test -cover -race -v ./...
+	go test -cover -race ./...
 
 .PHONY: build
 build:

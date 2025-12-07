@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/dynamic-calm/mokv/logger"
 	"github.com/dynamic-calm/mokv/mokv"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -14,6 +15,7 @@ const (
 	defaultBindAddr    = "127.0.0.1:8401"
 	defaultRPCPort     = 8400
 	defaultMetricsPort = 4000
+	serviceName        = "mokv"
 )
 
 // CLI represents the command-line interface application context and configuration.
@@ -22,12 +24,21 @@ type CLI struct {
 }
 
 func main() {
+	logger.Setup(
+		logger.Config{
+			Level:       getEnvOrDefault("LOG_LEVEL", "INFO"),
+			Development: getEnvOrDefault("ENV", "production") == "development",
+			ServiceName: serviceName,
+		},
+		os.Stderr,
+	)
+
 	app := &CLI{}
 	cmd := &cobra.Command{
 		Use:          "mokv",
 		Short:        "A distributed key-value store",
-		PreRunE:      app.SetupConfig,
-		RunE:         app.Run,
+		PreRunE:      app.setupConfig,
+		RunE:         app.run,
 		SilenceUsage: true,
 	}
 
@@ -40,9 +51,9 @@ func main() {
 	}
 }
 
-// SetupConfig initializes the configuration by reading from the config file (if provided)
+// setupConfig initializes the configuration by reading from the config file (if provided)
 // and merging flag values into the application configuration struct.
-func (c *CLI) SetupConfig(cmd *cobra.Command, args []string) error {
+func (c *CLI) setupConfig(cmd *cobra.Command, args []string) error {
 	c.config = &mokv.Config{}
 
 	configFile, err := cmd.Flags().GetString("config-file")
@@ -66,12 +77,13 @@ func (c *CLI) SetupConfig(cmd *cobra.Command, args []string) error {
 	c.config.StartJoinAddrs = viper.GetStringSlice("start-join-addrs")
 	c.config.Bootstrap = viper.GetBool("bootstrap")
 	c.config.MetricsPort = viper.GetInt("metrics-port")
+	c.config.LogLevel = viper.GetString("log-level")
 
 	return nil
 }
 
 // Run executes the main application logic, starting mokv service.
-func (c *CLI) Run(cmd *cobra.Command, args []string) error {
+func (c *CLI) run(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	service, err := mokv.New(c.config, os.Getenv)
 	if err != nil {
@@ -96,6 +108,14 @@ func setupFlags(cmd *cobra.Command) error {
 	cmd.Flags().StringSlice("start-join-addrs", nil, "Serf addresses to join.")
 	cmd.Flags().Bool("bootstrap", false, "Bootstrap the cluster.")
 	cmd.Flags().Int("metrics-port", defaultMetricsPort, "Port for metrics server.")
+	cmd.Flags().String("log-level", "INFO", "Log level.")
 
 	return viper.BindPFlags(cmd.Flags())
+}
+
+func getEnvOrDefault(key, defaultVal string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return defaultVal
 }

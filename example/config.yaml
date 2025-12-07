@@ -5,3 +5,4 @@ rpc-port: 8400
 metrics-port: 4000
 start-join-addrs: []
 bootstrap: true
+log-level: "INFO"

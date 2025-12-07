@@ -36,7 +36,7 @@ func main() {
 	}
 
 	// Set
-	fmt.Println("Setting key 'hello' = 'world'")
+	fmt.Println("\nSetting key 'hello' = 'world'")
 	setRes, err := client.Set(ctx, &api.SetRequest{Key: "hello", Value: []byte("world")})
 	if err != nil {
 		log.Fatal(err)
@@ -49,5 +49,5 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Got: %s = %s\n\n", getRes.Key, string(getRes.Value))
+	fmt.Printf("Got: %s = %s\n", getRes.Key, string(getRes.Value))
 }
