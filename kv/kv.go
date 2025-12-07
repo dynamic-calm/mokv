@@ -19,13 +19,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type KVI interface {
-	Get(key string) ([]byte, error)
-	Set(key string, value []byte) error
-	Delete(key string) error
-	List() <-chan []byte
-}
-
 type ServerProvider interface {
 	GetServers() ([]*api.Server, error)
 }

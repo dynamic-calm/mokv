@@ -18,19 +18,27 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+// Storer defines the interface for a the key-value storage.
+type Storer interface {
+	Get(key string) ([]byte, error)
+	Set(key string, value []byte) error
+	Delete(key string) error
+	List() <-chan []byte
+}
+
 type kvServer struct {
 	api.KVServer
-	KV           kv.KVI
+	KV           Storer
 	serverGetter kv.ServerProvider
 	logger       zerolog.Logger
 }
 
-func NewServerGetter(kv kv.KVI) kv.ServerProvider {
+func NewServerGetter(kv Storer) kv.ServerProvider {
 	return &kvServerGetter{kv: kv}
 }
 
 type kvServerGetter struct {
-	kv kv.KVI
+	kv Storer
 }
 
 func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
@@ -42,7 +50,7 @@ func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
 
 // New creates and configures a new gRPC server instance with logging middleware,
 // health checks, and the registered KV service.
-func New(KV kv.KVI, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Server {
+func New(KV Storer, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Server {
 	logOpts := []logging.Option{
 		logging.WithLogOnEvents(logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),

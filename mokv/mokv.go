@@ -41,6 +41,14 @@ type Config struct {
 	LogLevel       string
 }
 
+// Storer defines the interface for a the key-value storage.
+type Storer interface {
+	Get(key string) ([]byte, error)
+	Set(key string, value []byte) error
+	Delete(key string) error
+	List() <-chan []byte
+}
+
 // GetEnv defines a function signature for retrieving environment variables.
 type GetEnv func(string) string
 
@@ -48,7 +56,7 @@ type GetEnv func(string) string
 type MOKV struct {
 	cfg           *Config
 	getEnv        GetEnv
-	kv            kv.KVI
+	kv            Storer
 	meterProvider *metric.MeterProvider
 	grpcServer    *grpc.Server
 	metricsServer *http.Server
