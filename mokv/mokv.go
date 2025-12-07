@@ -8,11 +8,13 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/dynamic-calm/mokv/discovery"
@@ -38,6 +40,7 @@ type Config struct {
 	MetricsPort    int
 	StartJoinAddrs []string
 	Bootstrap      bool
+	LogLevel       string
 }
 
 // GetEnv defines a function signature for retrieving environment variables.
@@ -70,11 +73,6 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 	}
 
 	raftAdvertiseAddr := fmt.Sprintf("%s:%d", host, cfg.RPCPort)
-
-	log.Info().
-		Str("listenAddr", rpcAddr).
-		Str("raftAdvertiseAddr", raftAdvertiseAddr).
-		Msg("network configuration")
 
 	myCmux := cmux.New(listener)
 
@@ -131,7 +129,10 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 		),
 	}
 
-	grpcServer := server.New(kv, serverOpts...)
+	// Create logger
+	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
+
+	grpcServer := server.New(kv, logger, serverOpts...)
 
 	// Initialize membership
 	membership, err := discovery.NewMembership(kv, discovery.MembershipConfig{

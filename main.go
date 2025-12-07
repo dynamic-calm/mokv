@@ -66,6 +66,7 @@ func (c *CLI) setupConfig(cmd *cobra.Command, args []string) error {
 	c.config.StartJoinAddrs = viper.GetStringSlice("start-join-addrs")
 	c.config.Bootstrap = viper.GetBool("bootstrap")
 	c.config.MetricsPort = viper.GetInt("metrics-port")
+	c.config.LogLevel = viper.GetString("log-level")
 
 	return nil
 }
@@ -96,6 +97,7 @@ func setupFlags(cmd *cobra.Command) error {
 	cmd.Flags().StringSlice("start-join-addrs", nil, "Serf addresses to join.")
 	cmd.Flags().Bool("bootstrap", false, "Bootstrap the cluster.")
 	cmd.Flags().Int("metrics-port", defaultMetricsPort, "Port for metrics server.")
+	cmd.Flags().String("log-level", "INFO", "Log level.")
 
 	return viper.BindPFlags(cmd.Flags())
 }

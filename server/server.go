@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/dynamic-calm/mokv/api"
 	"github.com/dynamic-calm/mokv/kv"
@@ -42,8 +41,8 @@ func (kg *kvServerGetter) GetServers() ([]*api.Server, error) {
 
 // New creates and configures a new gRPC server instance with logging middleware,
 // health checks, and the registered KV service.
-func New(KV kv.KVI, opts ...grpc.ServerOption) *grpc.Server {
-	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
+func New(KV kv.KVI, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Server {
+
 	logOpts := []logging.Option{
 		logging.WithLogOnEvents(logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),

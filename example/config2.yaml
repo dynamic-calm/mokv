@@ -6,3 +6,4 @@ metrics-port: 4003
 start-join-addrs:
   - "127.0.0.1:8401"
 bootstrap: false
+log-level: "INFO"
