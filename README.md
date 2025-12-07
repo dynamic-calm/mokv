@@ -1,8 +1,52 @@
-# mökv
+<!-- markdownlint-disable MD033 MD041 -->
+<div align='center'>
+<img src="mokv.png" alt="mokv logo"/>
+<br />
+<br />
 
-`mökv` is a distributed, in-memory key-value store built with [`Raft`](https://github.com/hashicorp/raft) for consensus, [`Serf`](https://github.com/hashicorp/serf) for discovery, and [`gRPC`](https://github.com/grpc/grpc-go) for communication.
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Test](https://github.com/sinclairzx81/typedriver/actions/workflows/build.yml/badge.svg)](https://github.com/dynamic-calm/mokv/actions/workflows/test.yml)
 
-Built it following the book [Distributed Services with Go](https://pragprog.com/titles/tjgo/distributed-services-with-go/) by Travis Jeffery.
+</div>
+
+<!-- markdownlint-enable MD033 MD041 -->
+
+## Example
+
+<!-- markdownlint-disable MD010 -->
+
+```go
+package main
+
+import (
+	"context"
+
+	"github.com/dynamic-calm/mokv/mokv"
+)
+
+func main() {
+	client, _ := mokv.NewClient("localhost:8400")
+	defer client.Close()
+
+	ctx := context.Background()
+
+	key := `59°19'14.7"N`
+	val := []byte(`18°03'39.0"E`)
+
+	client.Set(ctx, key, val)
+	client.Get(ctx, key)
+	client.Delete(ctx, key)
+	client.GetServers(ctx)
+}
+```
+
+<!-- markdownlint-enable MD010 -->
+
+## Overview
+
+mökv is a distributed key-value store built with [Raft](https://github.com/hashicorp/raft) for consensus, [Serf](https://github.com/hashicorp/serf) for discovery, and [gRPC](https://github.com/grpc/grpc-go) for communication.
+
+Built following the book [Distributed Services with Go](https://pragprog.com/titles/tjgo/distributed-services-with-go/) by Travis Jeffery.
 
 ## Features
 
