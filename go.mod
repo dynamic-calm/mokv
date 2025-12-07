@@ -1,6 +1,6 @@
 module github.com/dynamic-calm/mokv
 
-go 1.25.4
+go 1.25.5
 
 require (
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.2.0
