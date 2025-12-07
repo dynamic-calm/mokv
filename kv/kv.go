@@ -19,8 +19,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-
-
 const (
 	// RaftRPC is the first byte sent on a connection to identify it as a Raft command
 	// for the connection multiplexer.
@@ -33,6 +31,11 @@ const (
 	RaftTimeout = 10 * time.Second
 
 	lenWidth = 8
+)
+
+var (
+	ErrLeaderTimeout = errors.New("timed out waiting for leader")
+	ErrNotRaftRPC    = errors.New("not a raft rpc connection")
 )
 
 // RequestType identifies the type of operation being applied to the Raft log.
@@ -219,7 +222,7 @@ func (kv *KV) WaitForLeader(timeout time.Duration) error {
 	for {
 		select {
 		case <-timeoutc:
-			return errors.New("timed out")
+			return ErrLeaderTimeout
 		case <-ticker.C:
 			if l := kv.raft.Leader(); l != "" {
 				return nil
@@ -498,7 +501,7 @@ func (s *StreamLayer) Accept() (net.Conn, error) {
 	}
 	if !bytes.Equal([]byte{byte(RaftRPC)}, b) {
 		conn.Close()
-		return nil, errors.New("not a raft rpc connection")
+		return nil, ErrNotRaftRPC
 	}
 	return conn, nil
 }
