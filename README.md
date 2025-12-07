@@ -5,7 +5,7 @@
 <br />
 
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Test](https://github.com/sinclairzx81/typedriver/actions/workflows/build.yml/badge.svg)](https://github.com/dynamic-calm/mokv/actions/workflows/test.yml)
+[![Tests](https://github.com/sinclairzx81/typedriver/actions/workflows/build.yml/badge.svg)](https://github.com/dynamic-calm/mokv/actions/workflows/test.yml)
 
 </div>
 
