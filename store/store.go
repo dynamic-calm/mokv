@@ -5,6 +5,11 @@ import (
 	"sync"
 )
 
+var (
+	ErrNotFound = errors.New("item not found")
+	ErrNotBytes = errors.New("value is not of type []byte")
+)
+
 // Store is a concurrent, in-memory implementation of Storer using a sync.Map.
 type Store struct {
 	m sync.Map
@@ -20,12 +25,12 @@ func New() *Store {
 func (s *Store) Get(key string) ([]byte, error) {
 	value, ok := s.m.Load(key)
 	if !ok {
-		return nil, errors.New("not found")
+		return nil, ErrNotFound
 	}
 
 	bytes, ok := value.([]byte)
 	if !ok {
-		return nil, errors.New("value is not of type []byte")
+		return nil, ErrNotBytes
 	}
 	return bytes, nil
 }
