@@ -47,6 +47,7 @@ type Storer interface {
 	Set(key string, value []byte) error
 	Delete(key string) error
 	List() <-chan []byte
+	Close() error
 }
 
 // GetEnv defines a function signature for retrieving environment variables.
@@ -225,6 +226,10 @@ func (r *MOKV) close(ctx context.Context) error {
 
 	if err := r.membership.Leave(); err != nil {
 		errs = append(errs, fmt.Errorf("membership leave error: %w", err))
+	}
+
+	if err := r.kv.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("KV close error: %w", err))
 	}
 
 	r.grpcServer.GracefulStop()

@@ -29,6 +29,10 @@ func (t *testKV) GetServers() ([]*api.Server, error) {
 	return nil, nil
 }
 
+func (t *testKV) Close() error {
+	return nil
+}
+
 // setupTestServer creates and starts a test server, returning cleanup function
 func setupTestServer(t *testing.T) (api.KVClient, func()) {
 	t.Helper()
