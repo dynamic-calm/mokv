@@ -204,14 +204,20 @@ func (kv *KV) Join(id, addr string) error {
 
 // Leave removes a node from the Raft cluster.
 func (kv *KV) Leave(id string) error {
-	removeFuture := kv.raft.RemoveServer(raft.ServerID(id), 0, 0)
-	return removeFuture.Error()
+	future := kv.raft.RemoveServer(raft.ServerID(id), 0, 0)
+	return future.Error()
 }
 
 // Close gracefully shuts down the Raft node.
 func (kv *KV) Close() error {
-	f := kv.raft.Shutdown()
-	return f.Error()
+	if kv.isLeader() {
+		future := kv.raft.LeadershipTransfer()
+		if err := future.Error(); err != nil {
+			return err
+		}
+	}
+	future := kv.raft.Shutdown()
+	return future.Error()
 }
 
 // WaitForLeader blocks until the Raft node detects a leader in the cluster or times out.
@@ -229,6 +235,9 @@ func (kv *KV) WaitForLeader(timeout time.Duration) error {
 			}
 		}
 	}
+}
+func (kv *KV) isLeader() bool {
+	return kv.raft.State() == raft.Leader
 }
 
 // apply encodes the request and submits it to Raft.
