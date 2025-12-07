@@ -37,9 +37,23 @@ This will:
 Then test it:
 
 ```bash
-kubectl port-forward pod/mokv-0 9800:8400
+➜ kubectl port-forward pod/mokv-0 9800:8400
 # In another terminal:
-go run cmd/get_servers.go -addr localhost:9800
+➜ go run cmd/test_kv.go -addr localhost:8400
+Getting servers:
+        - mokv-0.mokv.default.svc.cluster.local:8400 -> is leader: true
+        - mokv-1.mokv.default.svc.cluster.local:8400 -> is leader: false
+        - mokv-2.mokv.default.svc.cluster.local:8400 -> is leader: false
+
+Setting key 'hello' = 'world'
+Set OK: true
+
+Getting key 'hello'
+Got: hello = world
+```
+
+```bash
+kubectl scale statefulset mokv --replicas=5
 ```
 
 ### Configuration

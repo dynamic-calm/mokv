@@ -1,8 +1,10 @@
 package discovery
 
 import (
+	stdlog "log"
 	"net"
 
+	"github.com/dynamic-calm/mokv/logger"
 	"github.com/rs/zerolog/log"
 
 	"github.com/hashicorp/memberlist"
@@ -59,11 +61,19 @@ func (m *Membership) setupSerf() error {
 	if err != nil {
 		return err
 	}
+
+	// Setup logger
+	serfLogger := log.With().Str("component", "serf").Logger()
+	stdLogger := stdlog.New(logger.NewZeroLogWriter(serfLogger), "", 0)
+
+	// Serf config
 	config := serf.DefaultConfig()
 	config.Init()
+	config.Logger = stdLogger
 
 	// Memberlist config
 	mlConfig := memberlist.DefaultLocalConfig()
+	mlConfig.Logger = stdLogger
 	mlConfig.BindAddr = addr.IP.String()
 	mlConfig.BindPort = addr.Port
 	mlConfig.AdvertisePort = addr.Port

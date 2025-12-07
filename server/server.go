@@ -6,8 +6,9 @@ import (
 
 	"github.com/dynamic-calm/mokv/api"
 	"github.com/dynamic-calm/mokv/kv"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -48,13 +49,20 @@ func New(KV kv.KVI, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Serv
 	}
 
 	// Middleware for streaming and unary requests
-	opts = append(opts, grpc.StreamInterceptor(
-		grpc_middleware.ChainStreamServer(
-			logging.StreamServerInterceptor(interceptorLogger(logger), logOpts...),
+	opts = append(opts,
+		grpc.ChainStreamInterceptor(
+			selector.StreamServerInterceptor(
+				logging.StreamServerInterceptor(interceptorLogger(logger), logOpts...),
+				selector.MatchFunc(skipHealthAndReflectionRequests),
+			),
 		),
-	), grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
-		logging.UnaryServerInterceptor(interceptorLogger(logger), logOpts...),
-	)))
+		grpc.ChainUnaryInterceptor(
+			selector.UnaryServerInterceptor(
+				logging.UnaryServerInterceptor(interceptorLogger(logger), logOpts...),
+				selector.MatchFunc(skipHealthAndReflectionRequests),
+			),
+		),
+	)
 	s := grpc.NewServer(opts...)
 
 	healthSrv := health.NewServer()
@@ -142,4 +150,9 @@ func interceptorLogger(l zerolog.Logger) logging.Logger {
 		}
 		event.Fields(fields).Msg(msg)
 	})
+}
+
+func skipHealthAndReflectionRequests(_ context.Context, c interceptors.CallMeta) bool {
+	return c.FullMethod() != "/grpc.health.v1.Health/Check" &&
+		c.FullMethod() != "/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo"
 }

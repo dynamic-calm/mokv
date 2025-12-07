@@ -5,7 +5,6 @@ import (
 	"context"
 	"io"
 	"net"
-	"os"
 	"strconv"
 	"sync"
 	"testing"
@@ -14,7 +13,7 @@ import (
 	"github.com/dynamic-calm/mokv/api"
 	"github.com/dynamic-calm/mokv/server"
 	"github.com/dynamic-calm/mokv/store"
-	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,9 +31,8 @@ func setupTestServer(t *testing.T) (api.KVClient, func()) {
 	}
 
 	st := store.New()
-	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
 
-	srv := server.New(st, logger)
+	srv := server.New(st, log.Logger)
 
 	ready := make(chan bool)
 	go func() {

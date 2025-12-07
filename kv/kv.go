@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dynamic-calm/mokv/api"
+	"github.com/dynamic-calm/mokv/logger"
 	"github.com/dynamic-calm/mokv/store"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
@@ -294,6 +295,8 @@ func (kv *KV) setupRaft(dataDir string) error {
 	)
 
 	config := raft.DefaultConfig()
+	raftLogger := log.With().Str("component", "raft").Logger()
+	config.Logger = logger.NewHCLogWrapper(raftLogger)
 	config.LocalID = kv.cfg.Raft.LocalID
 	config.HeartbeatTimeout = 1 * time.Second
 	config.ElectionTimeout = 3 * time.Second

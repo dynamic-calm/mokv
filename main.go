@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/dynamic-calm/mokv/logger"
 	"github.com/dynamic-calm/mokv/mokv"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -14,6 +15,7 @@ const (
 	defaultBindAddr    = "127.0.0.1:8401"
 	defaultRPCPort     = 8400
 	defaultMetricsPort = 4000
+	serviceName        = "mokv"
 )
 
 // CLI represents the command-line interface application context and configuration.
@@ -22,6 +24,15 @@ type CLI struct {
 }
 
 func main() {
+	logger.Setup(
+		logger.Config{
+			Level:       getEnvOrDefault("LOG_LEVEL", "INFO"),
+			Development: getEnvOrDefault("ENV", "production") == "development",
+			ServiceName: serviceName,
+		},
+		os.Stderr,
+	)
+
 	app := &CLI{}
 	cmd := &cobra.Command{
 		Use:          "mokv",
@@ -100,4 +111,11 @@ func setupFlags(cmd *cobra.Command) error {
 	cmd.Flags().String("log-level", "INFO", "Log level.")
 
 	return viper.BindPFlags(cmd.Flags())
+}
+
+func getEnvOrDefault(key, defaultVal string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return defaultVal
 }

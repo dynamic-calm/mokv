@@ -8,13 +8,11 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/dynamic-calm/mokv/discovery"
@@ -129,26 +127,7 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 		),
 	}
 
-	// Create logger
-	lvlMap := map[string]zerolog.Level{
-		"INFO":  zerolog.InfoLevel,
-		"DEBUG": zerolog.DebugLevel,
-		"ERROR": zerolog.ErrorLevel,
-	}
-
-	lvl, ok := lvlMap[cfg.LogLevel]
-	if !ok {
-		lvl = zerolog.InfoLevel
-	}
-
-	logger := zerolog.
-		New(os.Stderr).
-		Level(lvl).
-		With().
-		Timestamp().
-		Logger()
-
-	grpcServer := server.New(kv, logger, serverOpts...)
+	grpcServer := server.New(kv, log.Logger, serverOpts...)
 
 	// Initialize membership
 	membership, err := discovery.NewMembership(kv, discovery.MembershipConfig{
