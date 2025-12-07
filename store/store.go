@@ -5,14 +5,6 @@ import (
 	"sync"
 )
 
-// Storer defines the interface for a the key-value storage.
-type Storer interface {
-	Get(key string) ([]byte, error)
-	Set(key string, value []byte) error
-	Delete(key string) error
-	List() <-chan []byte
-}
-
 // Store is a concurrent, in-memory implementation of Storer using a sync.Map.
 type Store struct {
 	m sync.Map
