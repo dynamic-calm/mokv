@@ -5,7 +5,8 @@
 <br />
 
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://github.com/sinclairzx81/typedriver/actions/workflows/build.yml/badge.svg)](https://github.com/dynamic-calm/mokv/actions/workflows/test.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/dynamic-calm/mokv)](https://goreportcard.com/report/github.com/dynamic-calm/mokv)
+[![Build](https://github.com/sinclairzx81/typedriver/actions/workflows/build.yml/badge.svg)](https://github.com/dynamic-calm/mokv/actions/workflows/build.yml)
 
 </div>
 
