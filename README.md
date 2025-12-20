@@ -26,7 +26,7 @@ import (
 )
 
 func main() {
-	client, _ := mokv.NewClient("localhost:8400")
+	client, _ := mokv.NewClient("addr")
 	defer client.Close()
 
 	ctx := context.Background()

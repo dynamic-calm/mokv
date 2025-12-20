@@ -67,8 +67,6 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	}
 
 	methodName := info.FullMethodName
-	isWrite := strings.Contains(methodName, "Set") ||
-		strings.Contains(methodName, "Delete")
 
 	// No available connections
 	if p.leader == nil && len(p.followers) == 0 {
@@ -78,10 +76,13 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		return result, balancer.ErrNoSubConnAvailable
 	}
 
+	isWrite := strings.Contains(methodName, "Set") ||
+		strings.Contains(methodName, "Delete")
+
 	// Write operations must go to leader
 	if isWrite {
 		if p.leader == nil {
-			log.Debug().
+			log.Warn().
 				Str("method", methodName).
 				Msg("pick failed: write operation but no leader")
 			return result, balancer.ErrNoSubConnAvailable
