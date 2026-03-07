@@ -6,46 +6,72 @@ package api;
 
 option go_package = "github.com/dynamic-calm/mokv/api";
 
+// GetRequest is the request message for the Get RPC.
 message GetRequest {
+    // key is the key to retrieve.
     string key = 1;
 }
 
+// GetResponse is the response message for the Get RPC.
 message GetResponse {
+    // key is the key that was retrieved.
     string key = 1;
+    // value is the value associated with the key.
     bytes value = 2;
 }
 
+// SetRequest is the request message for the Set RPC.
 message SetRequest {
+    // key is the key to set.
     string key = 1;
+    // value is the value to associate with the key.
     bytes value = 2;
 }
 
+// SetResponse is the response message for the Set RPC.
 message SetResponse {
+    // ok indicates whether the operation was successful.
     bool ok = 1;
 }
 
+// DeleteRequest is the request message for the Delete RPC.
 message DeleteRequest {
+    // key is the key to delete.
     string key = 1;
 }
 
+// DeleteResponse is the response message for the Delete RPC.
 message DeleteResponse {
+    // ok indicates whether the operation was successful.
     bool ok = 1;
 }
 
+// Server represents a server in the cluster.
 message Server {
+    // id is the unique identifier of the server.
     string id = 1;
+    // rpc_addr is the RPC address of the server.
     string rpc_addr = 2;
+    // is_leader indicates whether the server is the current leader.
     bool is_leader = 3;
 }
 
+// GetServersResponse is the response message for the GetServers RPC.
 message GetServersResponse{
+    // servers is the list of servers in the cluster.
     repeated Server servers = 1;
 }
 
+// KV is the key-value store service.
 service KV {
+    // Get retrieves the value associated with a given key.
     rpc Get(GetRequest) returns (GetResponse) {}
+    // Set stores a key-value pair.
     rpc Set(SetRequest) returns (SetResponse) {}
+    // Delete removes a key-value pair.
     rpc Delete(DeleteRequest) returns (DeleteResponse) {}
+    // List streams all key-value pairs.
     rpc List(google.protobuf.Empty) returns (stream GetResponse) {}
+    // GetServers returns the list of servers in the cluster.
     rpc GetServers(google.protobuf.Empty) returns (GetServersResponse){}
 }
