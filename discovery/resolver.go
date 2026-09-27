@@ -22,6 +22,9 @@ const (
 	// serviceConfigJSON defines the default service configuration, enabling the custom
 	// load balancer by default for this scheme.
 	serviceConfigJSON = `{"loadBalancingConfig":[{"%s":{}}]}`
+
+	// reResolveInterval controls how often the resolver calls the cluster.
+	reResolveInterval = 2 * time.Second
 )
 
 type Resolver struct {
@@ -29,6 +32,7 @@ type Resolver struct {
 	clientConn    resolver.ClientConn
 	resolverConn  *grpc.ClientConn
 	serviceConfig *serviceconfig.ParseResult
+	done          chan struct{}
 }
 
 func init() {
@@ -67,7 +71,25 @@ func (r *Resolver) Build(
 		return nil, err
 	}
 	r.ResolveNow(resolver.ResolveNowOptions{})
+
+	r.done = make(chan struct{})
+	go r.periodicResolve()
+
 	return r, nil
+}
+
+// periodicResolve keeps the resolved server/leader list fresh.
+func (r *Resolver) periodicResolve() {
+	ticker := time.NewTicker(reResolveInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			r.ResolveNow(resolver.ResolveNowOptions{})
+		case <-r.done:
+			return
+		}
+	}
 }
 
 func (r *Resolver) Scheme() string {
@@ -113,6 +135,7 @@ func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 
 // Close closes the resolver and the underlying connection to the discovery server.
 func (r *Resolver) Close() {
+	close(r.done)
 	if err := r.resolverConn.Close(); err != nil {
 		log.Error().
 			Err(err).
