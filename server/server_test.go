@@ -25,7 +25,7 @@ import (
 
 type cluster struct{}
 
-func (cluster) GetServers() ([]*api.Server, error) { return nil, nil }
+func (cluster) Servers() ([]kv.Server, error) { return nil, nil }
 
 // setupTestServer creates and starts a test server, returning cleanup function
 func setupTestServer(t *testing.T) (api.KVClient, func()) {

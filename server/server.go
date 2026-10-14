@@ -31,7 +31,7 @@ type KV interface {
 
 // Cluster lists the servers in the cluster.
 type Cluster interface {
-	GetServers() ([]*api.Server, error)
+	Servers() ([]kv.Server, error)
 }
 
 type kvServer struct {
@@ -120,11 +120,15 @@ func (s *kvServer) List(req *emptypb.Empty, stream grpc.ServerStreamingServer[ap
 
 // GetServers returns the list of nodes in the cluster.
 func (s *kvServer) GetServers(ctx context.Context, req *emptypb.Empty) (*api.GetServersResponse, error) {
-	servers, err := s.cluster.GetServers()
+	servers, err := s.cluster.Servers()
 	if err != nil {
 		return nil, err
 	}
-	return &api.GetServersResponse{Servers: servers}, nil
+	res := &api.GetServersResponse{Servers: make([]*api.Server, len(servers))}
+	for i, srv := range servers {
+		res.Servers[i] = &api.Server{Id: srv.ID, RpcAddr: srv.Addr, IsLeader: srv.IsLeader}
+	}
+	return res, nil
 }
 
 func (s *kvServer) notFoundMsg(key string) string {

@@ -2,24 +2,21 @@
 package mokv
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/dynamic-calm/mokv/consensus"
 	"github.com/dynamic-calm/mokv/discovery"
 	"github.com/dynamic-calm/mokv/kv"
 	"github.com/dynamic-calm/mokv/server"
-	"github.com/hashicorp/raft"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/otel/exporters/prometheus"
@@ -51,7 +48,7 @@ type GetEnv func(string) string
 type MOKV struct {
 	cfg           *Config
 	getEnv        GetEnv
-	kv            *kv.KV
+	node          *consensus.Node
 	svc           *kv.Service
 	meterProvider *metric.MeterProvider
 	grpcServer    *grpc.Server
@@ -78,38 +75,21 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 
 	myCmux := cmux.New(listener)
 
-	// Configure KV store
-	rpcPort := strconv.Itoa(cfg.RPCPort)
-	kvCfg := &kv.Config{DataDir: cfg.DataDir}
-	kvCfg.Raft.BindAddr = raftAdvertiseAddr
-	kvCfg.Raft.RPCPort = rpcPort
-	kvCfg.Raft.LocalID = raft.ServerID(cfg.NodeName)
-	kvCfg.Raft.Bootstrap = cfg.Bootstrap
-
-	// Configure Raft listener.
-	// If the first byte of the incoming connection is our RaftRPC constant,
-	// we know the call was initiated by Raft, and not a regular operation: get, set, etc.
-	raftLn := myCmux.Match(func(r io.Reader) bool {
-		b := make([]byte, 1)
-		if _, err := r.Read(b); err != nil {
-			return false
-		}
-
-		return bytes.Equal(b, []byte{byte(kv.RaftRPC)})
-	})
-
-	// The rest of connections are regular gRPC calls. Since this is set
-	// below, the Raft listener has precedence.
+	// Raft connections start with a header byte; the rest are gRPC. Raft is
+	// matched first so it takes precedence.
+	raftLn := myCmux.Match(consensus.Match)
 	grpcLn := myCmux.Match(cmux.Any())
 
-	// Setup Raft stream layer
-	kvCfg.Raft.StreamLayer = kv.NewStreamLayer(raftLn)
-
-	// Initialize store and KV
 	store := kv.NewStore()
-	node, err := kv.New(store, kvCfg)
+	node, err := consensus.New(store, consensus.Config{
+		ID:        cfg.NodeName,
+		Addr:      raftAdvertiseAddr,
+		Listener:  raftLn,
+		DataDir:   cfg.DataDir,
+		Bootstrap: cfg.Bootstrap,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create KV store: %w", err)
+		return nil, fmt.Errorf("failed to create raft node: %w", err)
 	}
 
 	// Initialize Prometheus exporter
@@ -154,7 +134,7 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 	}
 
 	return &MOKV{
-		kv:            node,
+		node:          node,
 		svc:           svc,
 		cfg:           cfg,
 		getEnv:        getEnv,
@@ -233,8 +213,8 @@ func (r *MOKV) close(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("membership leave error: %w", err))
 	}
 
-	if err := r.kv.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("KV close error: %w", err))
+	if err := r.node.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("raft node close error: %w", err))
 	}
 
 	r.grpcServer.GracefulStop()

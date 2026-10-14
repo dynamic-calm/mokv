@@ -1,4 +1,4 @@
-package kv
+package consensus
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dynamic-calm/mokv/kv"
 	"github.com/hashicorp/raft"
 )
 
@@ -29,9 +30,9 @@ func TestSnapshotRestore(t *testing.T) {
 		"forever":  {[]byte("c"), time.Time{}},
 	}
 
-	src := NewStore()
+	src := kv.NewStore()
 	for k, v := range want {
-		if err := src.Apply(Set{Key: k, Value: v.value, ExpiresAt: v.expiresAt}); err != nil {
+		if err := src.Apply(kv.Set{Key: k, Value: v.value, ExpiresAt: v.expiresAt}); err != nil {
 			t.Fatalf("Apply() error = %v", err)
 		}
 	}
@@ -45,8 +46,8 @@ func TestSnapshotRestore(t *testing.T) {
 		t.Fatalf("Persist() error = %v", err)
 	}
 
-	dst := NewStore()
-	_ = dst.Apply(Set{Key: "stale", Value: []byte("stale")})
+	dst := kv.NewStore()
+	_ = dst.Apply(kv.Set{Key: "stale", Value: []byte("stale")})
 	if err := (&fsm{store: dst}).Restore(io.NopCloser(&sink)); err != nil {
 		t.Fatalf("Restore() error = %v", err)
 	}
