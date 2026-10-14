@@ -1,4 +1,4 @@
-package discovery
+package client
 
 import (
 	"context"
@@ -27,8 +27,11 @@ const (
 	reResolveInterval = 2 * time.Second
 )
 
-// Resolver resolves the mokv scheme to the cluster servers, marking the leader.
-type Resolver struct {
+// isLeaderAttr is the address attribute the resolver sets for the picker.
+const isLeaderAttr = "is_leader"
+
+// clusterResolver resolves the mokv scheme to the cluster servers, marking the leader.
+type clusterResolver struct {
 	mu            sync.Mutex
 	clientConn    resolver.ClientConn
 	resolverConn  *grpc.ClientConn
@@ -56,7 +59,7 @@ func (b *resolverBuilder) Build(
 		Str("target", target.URL.Host).
 		Msg("building resolver")
 
-	r := &Resolver{clientConn: cc, done: make(chan struct{})}
+	r := &clusterResolver{clientConn: cc, done: make(chan struct{})}
 	var dialOpts []grpc.DialOption
 	if opts.DialCreds != nil {
 		dialOpts = append(
@@ -79,7 +82,7 @@ func (b *resolverBuilder) Build(
 }
 
 // periodicResolve keeps the resolved server/leader list fresh.
-func (r *Resolver) periodicResolve() {
+func (r *clusterResolver) periodicResolve() {
 	ticker := time.NewTicker(reResolveInterval)
 	defer ticker.Stop()
 	for {
@@ -97,11 +100,11 @@ func (b *resolverBuilder) Scheme() string {
 	return Scheme
 }
 
-var _ resolver.Resolver = (*Resolver)(nil)
+var _ resolver.Resolver = (*clusterResolver)(nil)
 
 // ResolveNow is called by gRPC to force an immediate resolution of the target.
 // It queries the cluster for the current list of servers and their leadership status.
-func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
+func (r *clusterResolver) ResolveNow(resolver.ResolveNowOptions) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	client := api.NewKVClient(r.resolverConn)
@@ -121,11 +124,8 @@ func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 			Interface("server", server).
 			Msg("got server")
 		addrs = append(addrs, resolver.Address{
-			Addr: server.RpcAddr,
-			Attributes: attributes.New(
-				"is_leader",
-				server.IsLeader,
-			),
+			Addr:       server.RpcAddr,
+			Attributes: attributes.New(isLeaderAttr, server.IsLeader),
 		})
 	}
 	err = r.clientConn.UpdateState(resolver.State{
@@ -138,7 +138,7 @@ func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 }
 
 // Close closes the resolver and the underlying connection to the discovery server.
-func (r *Resolver) Close() {
+func (r *clusterResolver) Close() {
 	close(r.done)
 	if err := r.resolverConn.Close(); err != nil {
 		log.Error().

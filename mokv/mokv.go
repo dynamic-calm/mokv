@@ -116,11 +116,9 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 
 	// Initialize membership
 	membership, err := discovery.NewMembership(node, discovery.MembershipConfig{
-		NodeName: cfg.NodeName,
-		BindAddr: cfg.BindAddr,
-		Tags: map[string]string{
-			"rpc_addr": raftAdvertiseAddr,
-		},
+		NodeName:       cfg.NodeName,
+		BindAddr:       cfg.BindAddr,
+		RPCAddr:        raftAdvertiseAddr,
 		StartJoinAddrs: cfg.StartJoinAddrs,
 	})
 	if err != nil {

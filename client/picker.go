@@ -1,9 +1,9 @@
-package discovery
+package client
 
 import (
-	"strings"
 	"sync/atomic"
 
+	"github.com/dynamic-calm/mokv/api"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
@@ -11,18 +11,18 @@ import (
 
 func init() {
 	balancer.Register(
-		base.NewBalancerBuilder(Scheme, &Builder{}, base.Config{}),
+		base.NewBalancerBuilder(Scheme, &pickerBuilder{}, base.Config{}),
 	)
 }
 
-var _ base.PickerBuilder = (*Builder)(nil)
+var _ base.PickerBuilder = (*pickerBuilder)(nil)
 
-// Builder implements base.PickerBuilder to construct a custom Picker.
-type Builder struct{}
+// pickerBuilder builds a picker from the resolved addresses.
+type pickerBuilder struct{}
 
-// Build creates a new Picker instance using the provided build information.
+// Build creates a new picker using the provided build information.
 // It segregates sub-connections into leader and followers based on attributes.
-func (b *Builder) Build(info base.PickerBuildInfo) balancer.Picker {
+func (b *pickerBuilder) Build(info base.PickerBuildInfo) balancer.Picker {
 	log.Info().
 		Int("ready_count", len(info.ReadySCs)).
 		Msg("building picker")
@@ -31,7 +31,7 @@ func (b *Builder) Build(info base.PickerBuildInfo) balancer.Picker {
 	var followers []balancer.SubConn
 
 	for sc, scInfo := range info.ReadySCs {
-		isLeader := scInfo.Address.Attributes.Value("is_leader").(bool)
+		isLeader := scInfo.Address.Attributes.Value(isLeaderAttr).(bool)
 		if isLeader {
 			leader = sc
 			continue
@@ -39,27 +39,27 @@ func (b *Builder) Build(info base.PickerBuildInfo) balancer.Picker {
 		followers = append(followers, sc)
 	}
 
-	return &Picker{
+	return &picker{
 		leader:    leader,
 		followers: followers,
 	}
 }
 
-// Picker implements balancer.Picker to handle RPC load balancing logic.
+// picker implements balancer.Picker to handle RPC load balancing logic.
 // It routes write operations to the leader and read operations to followers
 // in a round-robin fashion.
-type Picker struct {
+type picker struct {
 	leader    balancer.SubConn
 	followers []balancer.SubConn
 	current   atomic.Uint64
 }
 
-var _ balancer.Picker = (*Picker)(nil)
+var _ balancer.Picker = (*picker)(nil)
 
 // Pick selects the appropriate sub-connection for the RPC.
 // It inspects the method name to determine if the operation is a
 // write (Set/Delete) or a read.
-func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
+func (p *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	var result balancer.PickResult
 
 	methodName := info.FullMethodName
@@ -72,8 +72,8 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		return result, balancer.ErrNoSubConnAvailable
 	}
 
-	isWrite := strings.Contains(methodName, "Set") ||
-		strings.Contains(methodName, "Delete")
+	isWrite := methodName == api.KV_Set_FullMethodName ||
+		methodName == api.KV_Delete_FullMethodName
 
 	// Write operations must go to leader
 	if isWrite {
@@ -112,7 +112,7 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	return result, balancer.ErrNoSubConnAvailable
 }
 
-func (p *Picker) nextFollower() balancer.SubConn {
+func (p *picker) nextFollower() balancer.SubConn {
 	numFollowers := len(p.followers)
 	if numFollowers == 0 {
 		return nil

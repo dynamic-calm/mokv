@@ -1,4 +1,7 @@
-package mokv
+// Package client is a Go client for a mokv cluster. It also registers a gRPC
+// resolver and balancer for the Scheme, which send writes to the leader and
+// spread reads across followers.
+package client
 
 import (
 	"context"
@@ -24,8 +27,8 @@ type Server struct {
 	ID       string
 }
 
-// NewClient connects to a mökv node at the given address.
-func NewClient(addr string) (*Client, error) {
+// New connects to a mökv node at the given address.
+func New(addr string) (*Client, error) {
 	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -37,7 +40,8 @@ func NewClient(addr string) (*Client, error) {
 	}, nil
 }
 
-// Get retrieves a value by key. Returns nil if the key does not exist.
+// Get retrieves a value by key. If the key does not exist, the error has
+// code NotFound.
 func (c *Client) Get(ctx context.Context, key string) ([]byte, error) {
 	res, err := c.api.Get(ctx, &api.GetRequest{Key: key})
 	if err != nil {

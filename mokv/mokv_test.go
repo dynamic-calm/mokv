@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/dynamic-calm/mokv/api"
-	"github.com/dynamic-calm/mokv/discovery"
+	"github.com/dynamic-calm/mokv/client"
 	"github.com/dynamic-calm/mokv/mokv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -50,7 +50,7 @@ func TestRunE2E(t *testing.T) {
 	// Setup client connection
 	rpcAddr := "127.0.0.1:" + strconv.Itoa(cfg.RPCPort)
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("%s://%s", discovery.Scheme, rpcAddr),
+		fmt.Sprintf("%s://%s", client.Scheme, rpcAddr),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {

@@ -33,13 +33,10 @@ func (h *testHandler) Leave(id string) error {
 func setupMember(t *testing.T, members []*discovery.Membership, port int) ([]*discovery.Membership, *testHandler) {
 	id := len(members)
 	addr := fmt.Sprintf("%s:%d", "127.0.0.1", port)
-	tags := map[string]string{
-		"rpc_addr": addr,
-	}
 	c := discovery.MembershipConfig{
 		NodeName: fmt.Sprintf("%d", id),
 		BindAddr: addr,
-		Tags:     tags,
+		RPCAddr:  addr,
 	}
 
 	h := &testHandler{}

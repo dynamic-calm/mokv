@@ -1,5 +1,4 @@
-// Package discovery handles cluster membership with Serf and client-side
-// routing with a gRPC resolver and balancer.
+// Package discovery handles cluster membership with Serf.
 package discovery
 
 import (
@@ -20,11 +19,17 @@ type Handler interface {
 	Leave(name string) error
 }
 
+// rpcAddrTag is the Serf tag that carries a member's RPC address.
+const rpcAddrTag = "rpc_addr"
+
 // MembershipConfig holds the configuration for the Serf-based discovery mechanism.
 type MembershipConfig struct {
-	NodeName       string
-	BindAddr       string
-	Tags           map[string]string
+	NodeName string
+	// BindAddr is the address Serf listens on.
+	BindAddr string
+	// RPCAddr is the address the node serves RPCs and Raft on. It is passed
+	// to the Handler of other members when this node joins.
+	RPCAddr        string
 	StartJoinAddrs []string
 }
 
@@ -98,7 +103,7 @@ func (m *Membership) setupSerf() error {
 	m.events = make(chan serf.Event)
 	m.done = make(chan struct{})
 	config.EventCh = m.events
-	config.Tags = m.Tags
+	config.Tags = map[string]string{rpcAddrTag: m.RPCAddr}
 	config.NodeName = m.NodeName
 
 	m.serf, err = serf.Create(config)
@@ -151,7 +156,7 @@ func (m *Membership) handleJoin(member serf.Member) {
 		Str("member_addr", member.Addr.String()).
 		Msg("handling join event")
 
-	err := m.handler.Join(member.Name, member.Tags["rpc_addr"])
+	err := m.handler.Join(member.Name, member.Tags[rpcAddrTag])
 	if err != nil {
 		log.Error().Err(err).Msg("failed to join")
 		return

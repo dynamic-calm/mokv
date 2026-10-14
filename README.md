@@ -23,11 +23,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/dynamic-calm/mokv/mokv"
+	"github.com/dynamic-calm/mokv/client"
 )
 
 func main() {
-	client, _ := mokv.NewClient("addr")
+	client, _ := client.New("addr")
 	defer client.Close()
 
 	ctx := context.Background()
