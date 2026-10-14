@@ -38,7 +38,7 @@ func TestRunE2E(t *testing.T) {
 		Bootstrap:   true,
 	}
 
-	m, err := mokv.New(cfg, os.Getenv)
+	m, err := mokv.New(cfg)
 	if err != nil {
 		t.Fatalf("failed to create new mokv: %s", err)
 	}

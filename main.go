@@ -26,15 +26,6 @@ type CLI struct {
 }
 
 func main() {
-	logger.Setup(
-		logger.Config{
-			Level:       getEnvOrDefault("LOG_LEVEL", "INFO"),
-			Development: getEnvOrDefault("ENV", "production") == "development",
-			ServiceName: serviceName,
-		},
-		os.Stderr,
-	)
-
 	app := &CLI{}
 	cmd := &cobra.Command{
 		Use:          "mokv",
@@ -79,15 +70,22 @@ func (c *CLI) setupConfig(cmd *cobra.Command, args []string) error {
 	c.config.StartJoinAddrs = viper.GetStringSlice("start-join-addrs")
 	c.config.Bootstrap = viper.GetBool("bootstrap")
 	c.config.MetricsPort = viper.GetInt("metrics-port")
-	c.config.LogLevel = viper.GetString("log-level")
 
+	logger.Setup(
+		logger.Config{
+			Level:       viper.GetString("log-level"),
+			Development: getEnvOrDefault("ENV", "production") == "development",
+			ServiceName: serviceName,
+		},
+		os.Stderr,
+	)
 	return nil
 }
 
 // run executes the main application logic, starting the mokv service.
 func (c *CLI) run(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
-	service, err := mokv.New(c.config, os.Getenv)
+	service, err := mokv.New(c.config)
 	if err != nil {
 		return err
 	}
@@ -110,7 +108,7 @@ func setupFlags(cmd *cobra.Command) error {
 	cmd.Flags().StringSlice("start-join-addrs", nil, "Serf addresses to join.")
 	cmd.Flags().Bool("bootstrap", false, "Bootstrap the cluster.")
 	cmd.Flags().Int("metrics-port", defaultMetricsPort, "Port for metrics server.")
-	cmd.Flags().String("log-level", "INFO", "Log level.")
+	cmd.Flags().String("log-level", getEnvOrDefault("LOG_LEVEL", "INFO"), "Log level.")
 
 	return viper.BindPFlags(cmd.Flags())
 }
