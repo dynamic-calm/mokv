@@ -48,7 +48,7 @@ type kvServer struct {
 
 // New creates and configures a new gRPC server instance with logging middleware,
 // health checks, and the registered KV service.
-func New(KV KV, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Server {
+func New(kv KV, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Server {
 	logOpts := []logging.Option{
 		logging.WithLogOnEvents(logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),
@@ -76,7 +76,7 @@ func New(KV KV, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Server {
 	healthpb.RegisterHealthServer(s, healthSrv)
 
 	srv := &kvServer{
-		kv: KV,
+		kv: kv,
 	}
 	api.RegisterKVServer(s, srv)
 	return s

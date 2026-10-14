@@ -11,7 +11,7 @@ type ZerologWriter struct {
 	logger zerolog.Logger
 }
 
-func NewZeroLogWriter(logger zerolog.Logger) *ZerologWriter {
+func NewZerologWriter(logger zerolog.Logger) *ZerologWriter {
 	return &ZerologWriter{logger}
 }
 func (w *ZerologWriter) Write(p []byte) (n int, err error) {

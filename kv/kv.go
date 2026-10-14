@@ -57,13 +57,6 @@ const (
 	RequestTypeExpire
 )
 
-type BatchOperation struct {
-	reqType RequestType
-	key     string
-	value   []byte
-	result  chan error
-}
-
 // RaftConfig holds configuration specific to the Raft consensus mechanism.
 type RaftConfig struct {
 	raft.Config
@@ -73,8 +66,8 @@ type RaftConfig struct {
 	RPCPort     string
 }
 
-// KVConfig holds the general configuration for the KV store.
-type KVConfig struct {
+// Config holds the general configuration for the KV store.
+type Config struct {
 	Raft    RaftConfig
 	DataDir string
 }
@@ -92,7 +85,7 @@ type Storer interface {
 
 // KV is a distributed key-value store implementation using Raft consensus.
 type KV struct {
-	cfg   *KVConfig
+	cfg   *Config
 	store Storer
 	raft  *raft.Raft
 	done  chan struct{}
@@ -100,7 +93,7 @@ type KV struct {
 }
 
 // New creates and initializes a new distributed KV.
-func New(store Storer, cfg *KVConfig) (*KV, error) {
+func New(store Storer, cfg *Config) (*KV, error) {
 	kv := &KV{
 		cfg:   cfg,
 		store: store,
@@ -368,7 +361,7 @@ func unixNano(t time.Time) int64 {
 }
 
 func (kv *KV) setupRaft(dataDir string) error {
-	fsm := &fsm{kv: kv.store, dataDir: dataDir}
+	f := &fsm{store: kv.store}
 
 	raftDir := filepath.Join(dataDir, "raft")
 	if err := os.MkdirAll(raftDir, 0755); err != nil {
@@ -414,7 +407,7 @@ func (kv *KV) setupRaft(dataDir string) error {
 
 	kv.raft, err = raft.NewRaft(
 		config,
-		fsm,
+		f,
 		logStore,
 		stableStore,
 		snapshotStore,
@@ -441,7 +434,7 @@ func (kv *KV) setupRaft(dataDir string) error {
 			Str("addr", string(transport.LocalAddr())).
 			Msg("bootstrapping first node")
 
-		config := raft.Configuration{
+		bootstrapCfg := raft.Configuration{
 			Servers: []raft.Server{
 				{
 					ID:      config.LocalID,
@@ -449,7 +442,7 @@ func (kv *KV) setupRaft(dataDir string) error {
 				},
 			},
 		}
-		err = kv.raft.BootstrapCluster(config).Error()
+		err = kv.raft.BootstrapCluster(bootstrapCfg).Error()
 		if err != nil {
 			return fmt.Errorf("failed to bootstrap: %w", err)
 		}
@@ -460,8 +453,7 @@ func (kv *KV) setupRaft(dataDir string) error {
 }
 
 type fsm struct {
-	kv      Storer
-	dataDir string
+	store Storer
 }
 
 // Finite State Machine
@@ -469,12 +461,12 @@ var _ raft.FSM = (*fsm)(nil)
 
 // Apply applies a Raft log entry to the local KV store.
 // This will get called on every node in the cluster
-func (fsm *fsm) Apply(log *raft.Log) any {
-	if len(log.Data) == 0 {
+func (f *fsm) Apply(l *raft.Log) any {
+	if len(l.Data) == 0 {
 		return errors.New("empty log entry")
 	}
-	reqType := RequestType(log.Data[0])
-	data := log.Data[1:]
+	reqType := RequestType(l.Data[0])
+	data := l.Data[1:]
 	var expiresAt time.Time
 	if hasExpiry(reqType) {
 		var err error
@@ -485,49 +477,49 @@ func (fsm *fsm) Apply(log *raft.Log) any {
 
 	switch reqType {
 	case RequestTypeSet, RequestTypeSetWithExpiry:
-		return fsm.applySet(data, expiresAt)
+		return f.applySet(data, expiresAt)
 	case RequestTypeDelete:
-		return fsm.applyDelete(data)
+		return f.applyDelete(data)
 	case RequestTypeExpire:
-		return fsm.applyExpire(data, expiresAt)
+		return f.applyExpire(data, expiresAt)
 	}
 	return nil
 }
 
-func (fsm *fsm) applySet(b []byte, expiresAt time.Time) any {
+func (f *fsm) applySet(b []byte, expiresAt time.Time) any {
 	var req api.SetRequest
 	err := proto.Unmarshal(b, &req)
 	if err != nil {
 		return err
 	}
 
-	err = fsm.kv.Set(req.Key, req.Value, expiresAt)
+	err = f.store.Set(req.Key, req.Value, expiresAt)
 	if err != nil {
 		return err
 	}
 	return &api.SetResponse{Ok: true}
 }
 
-func (fsm *fsm) applyDelete(b []byte) any {
+func (f *fsm) applyDelete(b []byte) any {
 	var req api.DeleteRequest
 	err := proto.Unmarshal(b, &req)
 	if err != nil {
 		return err
 	}
-	err = fsm.kv.Delete(req.Key)
+	err = f.store.Delete(req.Key)
 	if err != nil {
 		return err
 	}
 	return &api.DeleteResponse{Ok: true}
 }
 
-func (fsm *fsm) applyExpire(b []byte, expiresAt time.Time) any {
+func (f *fsm) applyExpire(b []byte, expiresAt time.Time) any {
 	var req api.DeleteRequest
 	err := proto.Unmarshal(b, &req)
 	if err != nil {
 		return err
 	}
-	err = fsm.kv.DeleteExpired(req.Key, expiresAt)
+	err = f.store.DeleteExpired(req.Key, expiresAt)
 	if err != nil {
 		return err
 	}
@@ -538,10 +530,10 @@ func (fsm *fsm) applyExpire(b []byte, expiresAt time.Time) any {
 // Each entry is written as a length-prefixed set log entry, so Restore can
 // replay it through Apply with its expiry intact. Expired entries are kept so
 // the snapshot matches the replicated state exactly.
-func (fsm *fsm) Snapshot() (raft.FSMSnapshot, error) {
+func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
 	var buf bytes.Buffer
 	var err error
-	fsm.kv.Range(func(key string, value []byte, expiresAt time.Time) bool {
+	f.store.Range(func(key string, value []byte, expiresAt time.Time) bool {
 		var b []byte
 		b, err = encodeRequest(RequestTypeSetWithExpiry, &api.SetRequest{Key: key, Value: value}, expiresAt)
 		if err != nil {
@@ -574,12 +566,12 @@ func (s *snapshot) Persist(sink raft.SnapshotSink) error {
 func (s *snapshot) Release() {}
 
 // Restore replaces the store state with the one in the snapshot.
-func (fsm *fsm) Restore(r io.ReadCloser) error {
+func (f *fsm) Restore(r io.ReadCloser) error {
 	defer r.Close()
 
 	// Discard the previous state, as required by raft.FSM.
-	fsm.kv.Range(func(key string, _ []byte, _ time.Time) bool {
-		_ = fsm.kv.Delete(key)
+	f.store.Range(func(key string, _ []byte, _ time.Time) bool {
+		_ = f.store.Delete(key)
 		return true
 	})
 
@@ -595,7 +587,7 @@ func (fsm *fsm) Restore(r io.ReadCloser) error {
 		if _, err = io.ReadFull(r, entry); err != nil {
 			return err
 		}
-		if err, ok := fsm.Apply(&raft.Log{Data: entry}).(error); ok {
+		if err, ok := f.Apply(&raft.Log{Data: entry}).(error); ok {
 			return err
 		}
 	}

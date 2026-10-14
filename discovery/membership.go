@@ -70,7 +70,7 @@ func (m *Membership) setupSerf() error {
 
 	// Setup logger
 	serfLogger := log.With().Str("component", "serf").Logger()
-	stdLogger := stdlog.New(logger.NewZeroLogWriter(serfLogger), "", 0)
+	stdLogger := stdlog.New(logger.NewZerologWriter(serfLogger), "", 0)
 
 	// Serf config
 	config := serf.DefaultConfig()

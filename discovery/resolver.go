@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	// Name is the URL scheme used for the custom Mokv resolver (e.g., mokv:///Target).
-	Name = "mokv"
+	// Scheme is the URL scheme used for the custom mokv resolver (e.g., mokv:///Target).
+	Scheme = "mokv"
 
 	// serviceConfigJSON defines the default service configuration, enabling the custom
 	// load balancer by default for this scheme.
@@ -64,7 +64,7 @@ func (b *resolverBuilder) Build(
 		)
 	}
 	r.serviceConfig = r.clientConn.ParseServiceConfig(
-		fmt.Sprintf(serviceConfigJSON, Name),
+		fmt.Sprintf(serviceConfigJSON, Scheme),
 	)
 	var err error
 	r.resolverConn, err = grpc.NewClient(target.URL.Host, dialOpts...)
@@ -92,7 +92,7 @@ func (r *Resolver) periodicResolve() {
 }
 
 func (b *resolverBuilder) Scheme() string {
-	return Name
+	return Scheme
 }
 
 var _ resolver.Resolver = (*Resolver)(nil)
