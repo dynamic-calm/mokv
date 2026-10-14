@@ -47,7 +47,7 @@ func setupMember(t *testing.T, members []*discovery.Membership, port int) ([]*di
 		h.joins = make(chan map[string]string, 3)
 		h.leaves = make(chan string, 3)
 	} else {
-		// For new memebers: connect to 127.0.0.1:8000 to join the cluster
+		// For new members: connect to 127.0.0.1:8000 to join the cluster
 		c.StartJoinAddrs = []string{members[0].BindAddr}
 	}
 
@@ -55,6 +55,7 @@ func setupMember(t *testing.T, members []*discovery.Membership, port int) ([]*di
 	if err != nil {
 		t.Fatalf("error creating discovery: %v", err)
 	}
+	t.Cleanup(func() { m.Leave() })
 	members = append(members, m)
 	return members, h
 }
@@ -72,8 +73,8 @@ func TestMembership(t *testing.T) {
 		}
 	}
 
-	if len(members[0].Members()) != 3 {
-		t.Fatal("expected 3 members")
+	if got := len(members[0].Members()); got != 3 {
+		t.Fatalf("len(Members()) = %d, want 3", got)
 	}
 
 	if err := members[2].Leave(); err != nil {
@@ -83,7 +84,7 @@ func TestMembership(t *testing.T) {
 	select {
 	case leave := <-handler.leaves:
 		if leave != "2" {
-			t.Errorf("got %s, want 2", leave)
+			t.Errorf("Leave() handled %q, want %q", leave, "2")
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for leave")
