@@ -21,33 +21,28 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-// Storer is the key-value storage the server reads and writes.
-type Storer interface {
+// KV is the key-value store the server exposes.
+type KV interface {
 	Get(key string) ([]byte, error)
-	Set(ctx context.Context, key string, value []byte, expiresAt time.Time) error
+	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
 	Delete(ctx context.Context, key string) error
 	List() iter.Seq[kv.Entry]
 }
 
-// ServerProvider lists the servers in the cluster.
-type ServerProvider interface {
+// Cluster lists the servers in the cluster.
+type Cluster interface {
 	GetServers() ([]*api.Server, error)
-}
-
-// KV combines storage and cluster awareness.
-type KV interface {
-	Storer
-	ServerProvider
 }
 
 type kvServer struct {
 	api.KVServer
-	kv KV
+	kv      KV
+	cluster Cluster
 }
 
 // New creates and configures a new gRPC server instance with logging middleware,
 // health checks, and the registered KV service.
-func New(kv KV, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Server {
+func New(store KV, cluster Cluster, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Server {
 	logOpts := []logging.Option{
 		logging.WithLogOnEvents(logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),
@@ -75,7 +70,8 @@ func New(kv KV, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Server {
 	healthpb.RegisterHealthServer(s, healthSrv)
 
 	srv := &kvServer{
-		kv: kv,
+		kv:      store,
+		cluster: cluster,
 	}
 	api.RegisterKVServer(s, srv)
 	return s
@@ -95,8 +91,7 @@ func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetRespon
 	if !req.Ttl.IsValid() || req.Ttl.AsDuration() <= 0 {
 		return nil, status.Error(codes.InvalidArgument, "ttl must be a positive duration")
 	}
-	expiresAt := time.Now().Add(req.Ttl.AsDuration())
-	if err := s.kv.Set(ctx, req.Key, req.Value, expiresAt); err != nil {
+	if err := s.kv.Set(ctx, req.Key, req.Value, req.Ttl.AsDuration()); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to set key: %v", err)
 	}
 	return &api.SetResponse{Ok: true}, nil
@@ -125,7 +120,7 @@ func (s *kvServer) List(req *emptypb.Empty, stream grpc.ServerStreamingServer[ap
 
 // GetServers returns the list of nodes in the cluster.
 func (s *kvServer) GetServers(ctx context.Context, req *emptypb.Empty) (*api.GetServersResponse, error) {
-	servers, err := s.kv.GetServers()
+	servers, err := s.cluster.GetServers()
 	if err != nil {
 		return nil, err
 	}

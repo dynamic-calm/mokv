@@ -1,6 +1,7 @@
 package kv_test
 
 import (
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -83,13 +84,13 @@ func TestDistributedKVReplication(t *testing.T) {
 	}
 
 	// Write data to node 1
-	err = node1.Set(t.Context(), "test-key", []byte("test-value"), time.Time{})
+	err = node1.Propose(t.Context(), kv.Set{Key: "test-key", Value: []byte("test-value")})
 	if err != nil {
 		t.Fatalf("failed to write to node 1: %v", err)
 	}
 
 	// Read from node 2
-	waitForValue(t, node2, "test-key", "test-value")
+	waitForValue(t, store2, "test-key", "test-value")
 
 	// Test leader
 	servers, err := node1.GetServers()
@@ -154,29 +155,40 @@ func TestDistributedKVReplication(t *testing.T) {
 	}
 
 	// Write data to node 1
-	err = node1.Set(t.Context(), "test-key2", []byte("test-value2"), time.Time{})
+	err = node1.Propose(t.Context(), kv.Set{Key: "test-key2", Value: []byte("test-value2")})
 	if err != nil {
 		t.Fatalf("failed to write to node 1: %v", err)
 	}
 
 	// Read from node3
-	waitForValue(t, node3, "test-key2", "test-value2")
+	waitForValue(t, store3, "test-key2", "test-value2")
 
 	// Write an expiring key and check the leader removes it on every node
-	err = node1.Set(t.Context(), "ttl-key", []byte("ttl-value"), time.Now().Add(2*time.Second))
+	err = node1.Propose(t.Context(), kv.Set{
+		Key:       "ttl-key",
+		Value:     []byte("ttl-value"),
+		ExpiresAt: time.Now().Add(time.Second),
+	})
 	if err != nil {
 		t.Fatalf("failed to write expiring key to node 1: %v", err)
 	}
-	waitForValue(t, node3, "ttl-key", "ttl-value")
-	for name, st := range map[string]*kv.Store{"node1": store1, "node3": store3} {
-		waitFor(t, name+" to remove ttl-key", func() bool {
-			return !hasKey(st, "ttl-key")
-		})
+	waitFor(t, "ttl-key to replicate", func() bool { return hasKey(store3, "ttl-key") })
+	svc1 := kv.NewService(store1, node1, time.Now)
+	waitFor(t, "ttl-key to expire", func() bool {
+		if err := svc1.Expire(t.Context()); err != nil {
+			t.Fatalf("Expire() = %v, want nil", err)
+		}
+		return !hasKey(store1, "ttl-key") && !hasKey(store3, "ttl-key")
+	})
+
+	// Write to a follower.
+	if err := node3.Propose(t.Context(), kv.Delete{Key: "test-key2"}); !errors.Is(err, kv.ErrNotLeader) {
+		t.Errorf("node3.Propose() = %v, want %v", err, kv.ErrNotLeader)
 	}
 
 	// Read from node2. Since it left no data should be replicated.
-	if value, err := node2.Get("test-key2"); err == nil {
-		t.Errorf("node2.Get(%q) = %q, nil, want error", "test-key2", value)
+	if value, err := store2.Get("test-key2", time.Now()); err == nil {
+		t.Errorf("store2.Get(%q) = %q, nil, want error", "test-key2", value)
 	}
 }
 
@@ -192,11 +204,11 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	}
 }
 
-// waitForValue waits until node returns want for key.
-func waitForValue(t *testing.T, node *kv.KV, key, want string) {
+// waitForValue waits until st returns want for key.
+func waitForValue(t *testing.T, st *kv.Store, key, want string) {
 	t.Helper()
 	waitFor(t, key+" to replicate", func() bool {
-		got, err := node.Get(key)
+		got, err := st.Get(key, time.Now())
 		return err == nil && string(got) == want
 	})
 }

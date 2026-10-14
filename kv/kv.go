@@ -8,11 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"iter"
 	"net"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/dynamic-calm/mokv/api"
@@ -33,9 +31,6 @@ const (
 
 	// RaftTimeout defines the generic timeout for Raft operations.
 	RaftTimeout = 10 * time.Second
-
-	// ExpireInterval defines how often the leader looks for expired keys.
-	ExpireInterval = time.Second
 
 	lenWidth = 8
 )
@@ -78,100 +73,71 @@ type Config struct {
 	DataDir string
 }
 
-// KV is a distributed key-value store implementation using Raft consensus.
+// KV is a Raft node that replicates commands to the Store of every node.
 type KV struct {
-	cfg   *Config
-	store *Store
-	raft  *raft.Raft
-	done  chan struct{}
-	wg    sync.WaitGroup
+	cfg  *Config
+	raft *raft.Raft
 }
 
-// New creates and initializes a new distributed KV.
+var _ Replicator = (*KV)(nil)
+
+// New creates a Raft node that applies replicated commands to store.
 func New(store *Store, cfg *Config) (*KV, error) {
-	kv := &KV{
-		cfg:   cfg,
-		store: store,
-		done:  make(chan struct{}),
-	}
-	if err := kv.setupRaft(kv.cfg.DataDir); err != nil {
+	kv := &KV{cfg: cfg}
+	if err := kv.setupRaft(store, kv.cfg.DataDir); err != nil {
 		return nil, fmt.Errorf("failed to set up raft: %w", err)
 	}
-
-	kv.wg.Go(kv.expireLoop)
 	return kv, nil
 }
 
-// expireLoop periodically removes expired keys until the KV is closed.
-// Only the leader proposes the deletes; followers apply them through Raft.
-func (kv *KV) expireLoop() {
-	ticker := time.NewTicker(ExpireInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-kv.done:
-			return
-		case <-ticker.C:
-			if kv.isLeader() {
-				kv.expire(time.Now())
-			}
-		}
+// Propose replicates cmds and returns once they are applied on this node.
+// All commands are submitted before waiting so Raft can batch them. The Raft
+// enqueue timeout is bounded by the context deadline, if any.
+func (kv *KV) Propose(ctx context.Context, cmds ...Command) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-}
-
-// expire replicates a delete for every key that has expired as of now.
-func (kv *KV) expire(now time.Time) {
-	expired := kv.store.Expired(now)
-	if len(expired) == 0 {
-		return
+	if !kv.IsLeader() {
+		return kv.notLeader()
 	}
-
-	// Submit all deletes before waiting so Raft can batch them.
-	futures := make(map[string]raft.ApplyFuture, len(expired))
-	for _, e := range expired {
-		b, err := encodeRequest(RequestTypeExpire, &api.DeleteRequest{Key: e.Key}, e.ExpiresAt)
+	entries := make([][]byte, len(cmds))
+	for i, cmd := range cmds {
+		b, err := encodeCommand(cmd)
 		if err != nil {
-			log.Error().Err(err).Str("key", e.Key).Msg("failed to encode expire request")
-			continue
+			return err
 		}
-		futures[e.Key] = kv.raft.Apply(b, RaftTimeout)
+		entries[i] = b
 	}
 
-	for key, future := range futures {
-		if err := future.Error(); err != nil {
-			log.Error().Err(err).Str("key", key).Msg("failed to expire key")
+	timeout := RaftTimeout
+	if deadline, ok := ctx.Deadline(); ok {
+		timeout = min(timeout, time.Until(deadline))
+	}
+	futures := make([]raft.ApplyFuture, len(entries))
+	for i, b := range entries {
+		futures[i] = kv.raft.Apply(b, timeout)
+	}
+
+	var errs []error
+	for _, f := range futures {
+		if err := f.Error(); errors.Is(err, raft.ErrNotLeader) {
+			errs = append(errs, kv.notLeader())
+		} else if err != nil {
+			errs = append(errs, err)
+		} else if err, ok := f.Response().(error); ok {
+			errs = append(errs, err)
 		}
 	}
-	log.Debug().Int("count", len(futures)).Msg("expired keys")
+	return errors.Join(errs...)
 }
 
-// Get retrieves a value from the local store.
-func (kv *KV) Get(key string) ([]byte, error) {
-	return kv.store.Get(key, time.Now())
+// IsLeader reports whether this node is the Raft leader.
+func (kv *KV) IsLeader() bool {
+	return kv.raft.State() == raft.Leader
 }
 
-// Set applies a set operation to the distributed store via Raft.
-// The entry expires at expiresAt; a zero expiresAt means it never expires.
-func (kv *KV) Set(ctx context.Context, key string, value []byte, expiresAt time.Time) error {
-	_, err := kv.apply(ctx, RequestTypeSetWithExpiry, &api.SetRequest{Key: key, Value: value}, expiresAt)
-	if err != nil {
-		return fmt.Errorf("replicating set of key %q: %w", key, err)
-	}
-	return nil
-}
-
-// Delete applies a delete operation to the distributed store via Raft.
-func (kv *KV) Delete(ctx context.Context, key string) error {
-	_, err := kv.apply(ctx, RequestTypeDelete, &api.DeleteRequest{Key: key}, time.Time{})
-	if err != nil {
-		return fmt.Errorf("replicating delete of key %q: %w", key, err)
-	}
-	return nil
-}
-
-// List returns an iterator over all unexpired entries in the local store.
-func (kv *KV) List() iter.Seq[Entry] {
-	return kv.store.List(time.Now())
+func (kv *KV) notLeader() error {
+	return fmt.Errorf("%w: leader is %q", ErrNotLeader, kv.raft.Leader())
 }
 
 // GetServers retrieves the current list of servers in the Raft configuration.
@@ -210,14 +176,8 @@ func (kv *KV) Join(id, addr string) error {
 	serverID := raft.ServerID(id)
 	serverAddr := raft.ServerAddress(addr)
 
-	isLeader := kv.raft.State() == raft.Leader
-	log.Info().
-		Bool("am_i_leader", isLeader).
-		Msg("join request received")
-
-	if !isLeader {
-		leaderAddr := kv.raft.Leader()
-		return fmt.Errorf("not the leader, please retry join request with leader at %s", leaderAddr)
+	if !kv.IsLeader() {
+		return kv.notLeader()
 	}
 
 	configFuture := kv.raft.GetConfiguration()
@@ -256,10 +216,7 @@ func (kv *KV) Leave(id string) error {
 
 // Close gracefully shuts down the Raft node.
 func (kv *KV) Close() error {
-	close(kv.done)
-	kv.wg.Wait()
-
-	if kv.isLeader() {
+	if kv.IsLeader() {
 		future := kv.raft.LeadershipTransfer()
 		if err := future.Error(); err != nil {
 			return err
@@ -286,37 +243,17 @@ func (kv *KV) WaitForLeader(timeout time.Duration) error {
 	}
 }
 
-func (kv *KV) isLeader() bool {
-	return kv.raft.State() == raft.Leader
-}
-
-// apply encodes the request and submits it to Raft. The Raft enqueue timeout
-// is bounded by the context deadline, if any.
-// expiresAt is only encoded for request types that carry an expiry.
-func (kv *KV) apply(ctx context.Context, reqType RequestType, req proto.Message, expiresAt time.Time) (any, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
+// encodeCommand encodes cmd as a Raft log entry.
+func encodeCommand(cmd Command) ([]byte, error) {
+	switch c := cmd.(type) {
+	case Set:
+		return encodeRequest(RequestTypeSetWithExpiry, &api.SetRequest{Key: c.Key, Value: c.Value}, c.ExpiresAt)
+	case Delete:
+		return encodeRequest(RequestTypeDelete, &api.DeleteRequest{Key: c.Key}, time.Time{})
+	case Expire:
+		return encodeRequest(RequestTypeExpire, &api.DeleteRequest{Key: c.Key}, c.ExpiresAt)
 	}
-	b, err := encodeRequest(reqType, req, expiresAt)
-	if err != nil {
-		return nil, err
-	}
-
-	timeout := RaftTimeout
-	if deadline, ok := ctx.Deadline(); ok {
-		timeout = min(timeout, time.Until(deadline))
-	}
-	future := kv.raft.Apply(b, timeout)
-	if err := future.Error(); err != nil {
-		return nil, err
-	}
-
-	res := future.Response()
-	if err, ok := res.(error); ok {
-		return nil, err
-	}
-
-	return res, nil
+	return nil, fmt.Errorf("unknown command %T", cmd)
 }
 
 // encodeRequest builds a Raft log entry: the reqType byte to differentiate
@@ -359,8 +296,8 @@ func unixNano(t time.Time) int64 {
 	return t.UnixNano()
 }
 
-func (kv *KV) setupRaft(dataDir string) error {
-	f := &fsm{store: kv.store}
+func (kv *KV) setupRaft(store *Store, dataDir string) error {
+	f := &fsm{store: store}
 
 	raftDir := filepath.Join(dataDir, "raft")
 	if err := os.MkdirAll(raftDir, 0755); err != nil {
@@ -509,7 +446,7 @@ func decodeCommand(reqType RequestType, b []byte, expiresAt time.Time) (Command,
 func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
 	var buf bytes.Buffer
 	for e := range f.store.All() {
-		b, err := encodeRequest(RequestTypeSetWithExpiry, &api.SetRequest{Key: e.Key, Value: e.Value}, e.ExpiresAt)
+		b, err := encodeCommand(Set(e))
 		if err != nil {
 			return nil, fmt.Errorf("failed to encode snapshot entry: %w", err)
 		}

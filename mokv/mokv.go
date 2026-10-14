@@ -29,6 +29,9 @@ import (
 	"google.golang.org/grpc/stats/opentelemetry"
 )
 
+// expireInterval is how often the leader looks for expired keys.
+const expireInterval = time.Second
+
 // Config holds the configuration parameters for the MOKV server node.
 type Config struct {
 	DataDir        string
@@ -49,6 +52,7 @@ type MOKV struct {
 	cfg           *Config
 	getEnv        GetEnv
 	kv            *kv.KV
+	svc           *kv.Service
 	meterProvider *metric.MeterProvider
 	grpcServer    *grpc.Server
 	metricsServer *http.Server
@@ -102,7 +106,8 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 	kvCfg.Raft.StreamLayer = kv.NewStreamLayer(raftLn)
 
 	// Initialize store and KV
-	node, err := kv.New(kv.NewStore(), kvCfg)
+	store := kv.NewStore()
+	node, err := kv.New(store, kvCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create KV store: %w", err)
 	}
@@ -126,7 +131,8 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 		),
 	}
 
-	grpcServer := server.New(node, log.Logger, serverOpts...)
+	svc := kv.NewService(store, node, time.Now)
+	grpcServer := server.New(svc, node, log.Logger, serverOpts...)
 
 	// Initialize membership
 	membership, err := discovery.NewMembership(node, discovery.MembershipConfig{
@@ -149,6 +155,7 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 
 	return &MOKV{
 		kv:            node,
+		svc:           svc,
 		cfg:           cfg,
 		getEnv:        getEnv,
 		grpcLn:        grpcLn,
@@ -183,6 +190,12 @@ func (m *MOKV) Listen(ctx context.Context) error {
 		if err := m.grpcServer.Serve(m.grpcLn); err != nil {
 			return fmt.Errorf("gRPC server error: %w", err)
 		}
+		return nil
+	})
+
+	// Expire keys while this node is the leader.
+	g.Go(func() error {
+		m.svc.RunExpiry(ctx, expireInterval)
 		return nil
 	})
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"iter"
 	"net"
 	"strconv"
 	"sync"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/dynamic-calm/mokv/api"
 	"github.com/dynamic-calm/mokv/kv"
+	"github.com/dynamic-calm/mokv/kv/kvtest"
 	"github.com/dynamic-calm/mokv/server"
 	"github.com/rs/zerolog/log"
 	grpc "google.golang.org/grpc"
@@ -23,33 +23,9 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type testKV struct {
-	store *kv.Store
-}
+type cluster struct{}
 
-func (t *testKV) Get(key string) ([]byte, error) {
-	return t.store.Get(key, time.Now())
-}
-
-func (t *testKV) Set(_ context.Context, key string, value []byte, expiresAt time.Time) error {
-	return t.store.Apply(kv.Set{Key: key, Value: value, ExpiresAt: expiresAt})
-}
-
-func (t *testKV) Delete(_ context.Context, key string) error {
-	return t.store.Apply(kv.Delete{Key: key})
-}
-
-func (t *testKV) List() iter.Seq[kv.Entry] {
-	return t.store.List(time.Now())
-}
-
-func (t *testKV) GetServers() ([]*api.Server, error) {
-	return nil, nil
-}
-
-func (t *testKV) Close() error {
-	return nil
-}
+func (cluster) GetServers() ([]*api.Server, error) { return nil, nil }
 
 // setupTestServer creates and starts a test server, returning cleanup function
 func setupTestServer(t *testing.T) (api.KVClient, func()) {
@@ -60,9 +36,9 @@ func setupTestServer(t *testing.T) (api.KVClient, func()) {
 		t.Fatalf("failed to create listener: %v", err)
 	}
 
-	st := &testKV{store: kv.NewStore()}
-
-	srv := server.New(st, log.Logger)
+	store := kv.NewStore()
+	svc := kv.NewService(store, &kvtest.Replicator{Store: store}, time.Now)
+	srv := server.New(svc, cluster{}, log.Logger)
 
 	ready := make(chan bool)
 	go func() {
