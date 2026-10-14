@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -15,29 +14,16 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+// Scheme is the target scheme that resolves to the cluster servers and
+// balances requests across them, as in "mokv://host:port".
+const Scheme = "mokv"
+
 const (
-	// Scheme is the URL scheme used for the custom mokv resolver (e.g., mokv:///Target).
-	Scheme = "mokv"
-
-	// serviceConfigJSON defines the default service configuration, enabling the custom
-	// load balancer by default for this scheme.
-	serviceConfigJSON = `{"loadBalancingConfig":[{"%s":{}}]}`
-
-	// reResolveInterval controls how often the resolver calls the cluster.
+	serviceConfig     = `{"loadBalancingConfig":[{"` + Scheme + `":{}}]}`
+	isLeaderAttr      = "is_leader"
 	reResolveInterval = 2 * time.Second
+	resolveTimeout    = 5 * time.Second
 )
-
-// isLeaderAttr is the address attribute the resolver sets for the picker.
-const isLeaderAttr = "is_leader"
-
-// clusterResolver resolves the mokv scheme to the cluster servers, marking the leader.
-type clusterResolver struct {
-	mu            sync.Mutex
-	clientConn    resolver.ClientConn
-	resolverConn  *grpc.ClientConn
-	serviceConfig *serviceconfig.ParseResult
-	done          chan struct{}
-}
 
 func init() {
 	resolver.Register(&resolverBuilder{})
@@ -47,42 +33,78 @@ type resolverBuilder struct{}
 
 var _ resolver.Builder = (*resolverBuilder)(nil)
 
-// Build creates a new resolver for the given target.
-// It establishes a connection to the seed address provided in the
-// target to fetch initial members.
 func (b *resolverBuilder) Build(
 	target resolver.Target,
 	cc resolver.ClientConn,
 	opts resolver.BuildOptions,
 ) (resolver.Resolver, error) {
-	log.Info().
-		Str("target", target.URL.Host).
-		Msg("building resolver")
-
-	r := &clusterResolver{clientConn: cc, done: make(chan struct{})}
 	var dialOpts []grpc.DialOption
 	if opts.DialCreds != nil {
-		dialOpts = append(
-			dialOpts,
-			grpc.WithTransportCredentials(opts.DialCreds),
-		)
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(opts.DialCreds))
 	}
-	r.serviceConfig = r.clientConn.ParseServiceConfig(
-		fmt.Sprintf(serviceConfigJSON, Scheme),
-	)
-	var err error
-	r.resolverConn, err = grpc.NewClient(target.URL.Host, dialOpts...)
+	conn, err := grpc.NewClient(target.URL.Host, dialOpts...)
 	if err != nil {
 		return nil, err
 	}
+	r := &clusterResolver{
+		cc:            cc,
+		conn:          conn,
+		api:           api.NewKVClient(conn),
+		serviceConfig: cc.ParseServiceConfig(serviceConfig),
+		done:          make(chan struct{}),
+	}
 	r.ResolveNow(resolver.ResolveNowOptions{})
-	go r.periodicResolve()
-
+	go r.resolvePeriodically()
 	return r, nil
 }
 
-// periodicResolve keeps the resolved server/leader list fresh.
-func (r *clusterResolver) periodicResolve() {
+func (b *resolverBuilder) Scheme() string {
+	return Scheme
+}
+
+type clusterResolver struct {
+	mu            sync.Mutex
+	cc            resolver.ClientConn
+	conn          *grpc.ClientConn
+	api           api.KVClient
+	serviceConfig *serviceconfig.ParseResult
+	done          chan struct{}
+}
+
+var _ resolver.Resolver = (*clusterResolver)(nil)
+
+func (r *clusterResolver) ResolveNow(resolver.ResolveNowOptions) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), resolveTimeout)
+	defer cancel()
+	res, err := r.api.GetServers(ctx, &emptypb.Empty{})
+	if err != nil {
+		log.Error().Err(err).Msg("failed to resolve servers")
+		r.cc.ReportError(err)
+		return
+	}
+	var addrs []resolver.Address
+	for _, s := range res.Servers {
+		addrs = append(addrs, resolver.Address{
+			Addr:       s.RpcAddr,
+			Attributes: attributes.New(isLeaderAttr, s.IsLeader),
+		})
+	}
+	if err := r.cc.UpdateState(resolver.State{Addresses: addrs, ServiceConfig: r.serviceConfig}); err != nil {
+		log.Error().Err(err).Msg("failed to update resolver state")
+	}
+}
+
+func (r *clusterResolver) Close() {
+	close(r.done)
+	if err := r.conn.Close(); err != nil {
+		log.Error().Err(err).Msg("failed to close resolver connection")
+	}
+}
+
+func (r *clusterResolver) resolvePeriodically() {
 	ticker := time.NewTicker(reResolveInterval)
 	defer ticker.Stop()
 	for {
@@ -92,58 +114,5 @@ func (r *clusterResolver) periodicResolve() {
 		case <-r.done:
 			return
 		}
-	}
-}
-
-// Scheme returns the URL scheme handled by the resolver.
-func (b *resolverBuilder) Scheme() string {
-	return Scheme
-}
-
-var _ resolver.Resolver = (*clusterResolver)(nil)
-
-// ResolveNow is called by gRPC to force an immediate resolution of the target.
-// It queries the cluster for the current list of servers and their leadership status.
-func (r *clusterResolver) ResolveNow(resolver.ResolveNowOptions) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	client := api.NewKVClient(r.resolverConn)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	res, err := client.GetServers(ctx, &emptypb.Empty{})
-	if err != nil {
-		log.Error().
-			Err(err).
-			Msg("failed to resolve server")
-		r.clientConn.ReportError(err)
-		return
-	}
-	var addrs []resolver.Address
-	for _, server := range res.Servers {
-		log.Info().
-			Interface("server", server).
-			Msg("got server")
-		addrs = append(addrs, resolver.Address{
-			Addr:       server.RpcAddr,
-			Attributes: attributes.New(isLeaderAttr, server.IsLeader),
-		})
-	}
-	err = r.clientConn.UpdateState(resolver.State{
-		Addresses:     addrs,
-		ServiceConfig: r.serviceConfig,
-	})
-	if err != nil {
-		log.Error().Err(err).Msg("failed to update resolver state")
-	}
-}
-
-// Close closes the resolver and the underlying connection to the discovery server.
-func (r *clusterResolver) Close() {
-	close(r.done)
-	if err := r.resolverConn.Close(); err != nil {
-		log.Error().
-			Err(err).
-			Msg("failed to close connection")
-		return
 	}
 }

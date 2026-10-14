@@ -14,6 +14,8 @@ type testSink struct {
 	bytes.Buffer
 }
 
+var _ raft.SnapshotSink = (*testSink)(nil)
+
 func (s *testSink) ID() string    { return "test" }
 func (s *testSink) Cancel() error { return nil }
 func (s *testSink) Close() error  { return nil }
@@ -47,7 +49,9 @@ func TestSnapshotRestore(t *testing.T) {
 	}
 
 	dst := kv.NewStore()
-	_ = dst.Apply(kv.Set{Key: "stale", Value: []byte("stale")})
+	if err := dst.Apply(kv.Set{Key: "stale", Value: []byte("stale")}); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
 	if err := (&fsm{store: dst}).Restore(io.NopCloser(&sink)); err != nil {
 		t.Fatalf("Restore() error = %v", err)
 	}
@@ -68,5 +72,3 @@ func TestSnapshotRestore(t *testing.T) {
 		t.Errorf("Restore() restored %d keys, want %d", got, len(want))
 	}
 }
-
-var _ raft.SnapshotSink = (*testSink)(nil)

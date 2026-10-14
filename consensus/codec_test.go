@@ -80,7 +80,6 @@ func TestCodecCompatible(t *testing.T) {
 		}
 	}
 
-	// Sets without expiry come from logs older than expiry support.
 	old := legacy(entrySet, nil, &api.SetRequest{Key: "key", Value: []byte("value")})
 	got, err := decode(old)
 	if err != nil {

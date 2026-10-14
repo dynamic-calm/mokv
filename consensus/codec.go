@@ -11,16 +11,9 @@ import (
 	"google.golang.org/protobuf/encoding/protowire"
 )
 
-// A Raft log entry is a type byte, then, for the types that carry one, an
-// 8-byte big-endian expiry deadline in Unix nanoseconds (0 for none), then
-// the key in protobuf field 1 and the value in protobuf field 2.
-//
-// Logs and snapshots persist this format, so it must stay readable.
-
 type entryType uint8
 
 const (
-	// entrySet is a set without expiry, kept for old log entries.
 	entrySet entryType = iota
 	entryDelete
 	entrySetWithExpiry
@@ -33,7 +26,6 @@ const (
 	deadlineWidth                  = 8
 )
 
-// encode encodes cmd as a Raft log entry.
 func encode(cmd kv.Command) ([]byte, error) {
 	switch c := cmd.(type) {
 	case kv.Set:
@@ -48,7 +40,6 @@ func encode(cmd kv.Command) ([]byte, error) {
 	return nil, fmt.Errorf("unknown command %T", cmd)
 }
 
-// decode decodes a Raft log entry into a command.
 func decode(b []byte) (kv.Command, error) {
 	if len(b) == 0 {
 		return nil, errors.New("empty log entry")
@@ -81,7 +72,6 @@ func decode(b []byte) (kv.Command, error) {
 	return nil, fmt.Errorf("unknown log entry type %d", typ)
 }
 
-// appendDeadline appends t in Unix nanoseconds, encoding a zero t as 0.
 func appendDeadline(b []byte, t time.Time) []byte {
 	var n int64
 	if !t.IsZero() {
@@ -90,8 +80,6 @@ func appendDeadline(b []byte, t time.Time) []byte {
 	return binary.BigEndian.AppendUint64(b, uint64(n))
 }
 
-// appendFields appends key and value as protobuf fields, omitting empty
-// ones as proto3 does.
 func appendFields(b []byte, key string, value []byte) []byte {
 	if key != "" {
 		b = protowire.AppendTag(b, fieldKey, protowire.BytesType)
@@ -104,8 +92,6 @@ func appendFields(b []byte, key string, value []byte) []byte {
 	return b
 }
 
-// consumeFields reads the key and value protobuf fields from b, skipping
-// unknown fields.
 func consumeFields(b []byte) (key string, value []byte, err error) {
 	for len(b) > 0 {
 		num, typ, n := protowire.ConsumeTag(b)

@@ -20,7 +20,7 @@ func newNode(t *testing.T, id string, bootstrap bool) *testNode {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("failed to create listener for %s: %v", id, err)
+		t.Fatalf("Setup: net.Listen() for %s: %v", id, err)
 	}
 	store := kv.NewStore()
 	node, err := consensus.New(store, consensus.Config{
@@ -31,7 +31,7 @@ func newNode(t *testing.T, id string, bootstrap bool) *testNode {
 		Bootstrap: bootstrap,
 	})
 	if err != nil {
-		t.Fatalf("failed to create %s: %v", id, err)
+		t.Fatalf("Setup: consensus.New() for %s: %v", id, err)
 	}
 	t.Cleanup(func() { _ = node.Close() })
 	return &testNode{Node: node, store: store, addr: ln.Addr().String()}
@@ -84,8 +84,6 @@ func TestReplication(t *testing.T) {
 	}
 	waitForValue(t, node3.store, "test-key2", "test-value2")
 
-	// Expire a key through the service on the leader and check every node
-	// removes it.
 	err = node1.Propose(t.Context(), kv.Set{
 		Key:       "ttl-key",
 		Value:     []byte("ttl-value"),
@@ -110,13 +108,11 @@ func TestReplication(t *testing.T) {
 		t.Errorf("node3.Join() = %v, want %v", err, kv.ErrNotLeader)
 	}
 
-	// node-2 left before test-key2 was written.
 	if value, err := node2.store.Get("test-key2", time.Now()); err == nil {
 		t.Errorf("node2 Get(%q) = %q, nil, want error", "test-key2", value)
 	}
 }
 
-// waitFor polls cond until it returns true or the test times out.
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -128,7 +124,6 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	}
 }
 
-// waitForValue waits until st returns want for key.
 func waitForValue(t *testing.T, st *kv.Store, key, want string) {
 	t.Helper()
 	waitFor(t, key+" to replicate", func() bool {
@@ -137,7 +132,6 @@ func waitForValue(t *testing.T, st *kv.Store, key, want string) {
 	})
 }
 
-// hasKey reports whether st holds key, including expired entries.
 func hasKey(st *kv.Store, key string) bool {
 	for e := range st.All() {
 		if e.Key == key {

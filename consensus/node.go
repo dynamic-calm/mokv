@@ -1,4 +1,8 @@
 // Package consensus replicates kv commands across the cluster with Raft.
+//
+// Commands are persisted in the Raft log and in snapshots in a binary format
+// owned by this package. Changes to the format must keep existing logs and
+// snapshots readable.
 package consensus
 
 import (
@@ -18,12 +22,9 @@ import (
 )
 
 const (
-	// retainSnapshotCount is how many snapshots to keep on disk.
 	retainSnapshotCount = 2
-	// raftTimeout bounds Raft operations.
-	raftTimeout = 10 * time.Second
-	// maxPool is how many connections to keep open per peer.
-	maxPool = 5
+	raftTimeout         = 10 * time.Second
+	maxPool             = 5
 )
 
 // ErrLeaderTimeout is returned when no leader is elected in time.
@@ -55,7 +56,7 @@ var _ kv.Replicator = (*Node)(nil)
 func New(store *kv.Store, cfg Config) (*Node, error) {
 	r, err := newRaft(&fsm{store: store}, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to set up raft: %w", err)
+		return nil, err
 	}
 	return &Node{raft: r}, nil
 }
@@ -90,12 +91,16 @@ func (n *Node) Propose(ctx context.Context, cmds ...kv.Command) error {
 
 	var errs []error
 	for _, f := range futures {
-		if err := f.Error(); errors.Is(err, raft.ErrNotLeader) {
+		err := f.Error()
+		switch {
+		case errors.Is(err, raft.ErrNotLeader):
 			errs = append(errs, n.notLeader())
-		} else if err != nil {
+		case err != nil:
 			errs = append(errs, err)
-		} else if err, ok := f.Response().(error); ok {
-			errs = append(errs, err)
+		default:
+			if err, ok := f.Response().(error); ok {
+				errs = append(errs, err)
+			}
 		}
 	}
 	return errors.Join(errs...)
@@ -110,7 +115,7 @@ func (n *Node) IsLeader() bool {
 func (n *Node) Servers() ([]kv.Server, error) {
 	future := n.raft.GetConfiguration()
 	if err := future.Error(); err != nil {
-		return nil, fmt.Errorf("failed to get raft configuration: %w", err)
+		return nil, fmt.Errorf("getting raft configuration: %w", err)
 	}
 	_, leaderID := n.raft.LeaderWithID()
 	var servers []kv.Server
@@ -137,7 +142,7 @@ func (n *Node) Join(id, addr string) error {
 	serverAddr := raft.ServerAddress(addr)
 	future := n.raft.GetConfiguration()
 	if err := future.Error(); err != nil {
-		return fmt.Errorf("failed to get raft configuration: %w", err)
+		return fmt.Errorf("getting raft configuration: %w", err)
 	}
 	for _, s := range future.Configuration().Servers {
 		if s.ID == serverID && s.Address == serverAddr {
@@ -147,7 +152,7 @@ func (n *Node) Join(id, addr string) error {
 	}
 
 	if err := n.raft.AddVoter(serverID, serverAddr, 0, raftTimeout).Error(); err != nil {
-		return fmt.Errorf("failed to add voter: %w", err)
+		return fmt.Errorf("adding voter %q: %w", id, err)
 	}
 	log.Info().Str("id", id).Msg("successfully added voter")
 	return nil
@@ -192,20 +197,20 @@ func (n *Node) notLeader() error {
 
 func newRaft(f raft.FSM, cfg Config) (*raft.Raft, error) {
 	raftDir := filepath.Join(cfg.DataDir, "raft")
-	if err := os.MkdirAll(raftDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create raft directory: %w", err)
+	if err := os.MkdirAll(raftDir, 0o755); err != nil {
+		return nil, fmt.Errorf("creating raft directory: %w", err)
 	}
 	logStore, err := raftboltdb.NewBoltStore(filepath.Join(raftDir, "log"))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create log store: %w", err)
+		return nil, fmt.Errorf("creating log store: %w", err)
 	}
 	stableStore, err := raftboltdb.NewBoltStore(filepath.Join(raftDir, "stable"))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create stable store: %w", err)
+		return nil, fmt.Errorf("creating stable store: %w", err)
 	}
 	snapshotStore, err := raft.NewFileSnapshotStore(raftDir, retainSnapshotCount, os.Stderr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create snapshot store: %w", err)
+		return nil, fmt.Errorf("creating snapshot store: %w", err)
 	}
 	transport := raft.NewNetworkTransport(&streamLayer{ln: cfg.Listener}, maxPool, raftTimeout, os.Stderr)
 
@@ -223,12 +228,12 @@ func newRaft(f raft.FSM, cfg Config) (*raft.Raft, error) {
 
 	r, err := raft.NewRaft(config, f, logStore, stableStore, snapshotStore, transport)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create new raft: %w", err)
+		return nil, fmt.Errorf("creating raft: %w", err)
 	}
 
 	hasState, err := raft.HasExistingState(logStore, stableStore, snapshotStore)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check if raft has existing state: %w", err)
+		return nil, fmt.Errorf("checking for existing raft state: %w", err)
 	}
 	if cfg.Bootstrap && !hasState {
 		log.Info().Str("id", cfg.ID).Str("addr", cfg.Addr).Msg("bootstrapping first node")
@@ -236,7 +241,7 @@ func newRaft(f raft.FSM, cfg Config) (*raft.Raft, error) {
 			Servers: []raft.Server{{ID: config.LocalID, Address: raft.ServerAddress(cfg.Addr)}},
 		}
 		if err := r.BootstrapCluster(bootstrapCfg).Error(); err != nil {
-			return nil, fmt.Errorf("failed to bootstrap: %w", err)
+			return nil, fmt.Errorf("bootstrapping cluster: %w", err)
 		}
 		log.Info().Msg("bootstrap successful")
 	}

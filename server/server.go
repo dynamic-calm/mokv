@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-	status "google.golang.org/grpc/status"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -34,23 +34,19 @@ type Cluster interface {
 	Servers() ([]kv.Server, error)
 }
 
-// kvServer adapts KV and Cluster to the gRPC API. It converts requests into
-// domain calls, and domain results and errors into responses and statuses.
 type kvServer struct {
-	api.KVServer
+	api.UnimplementedKVServer
 	svc     KV
 	cluster Cluster
 }
 
-// New creates and configures a new gRPC server instance with logging middleware,
-// health checks, and the registered KV service.
+// New returns a gRPC server that serves svc and cluster through the KV API,
+// along with health checks. Requests are logged to logger.
 func New(svc KV, cluster Cluster, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Server {
 	logOpts := []logging.Option{
 		logging.WithLogOnEvents(logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),
 	}
-
-	// Middleware for streaming and unary requests
 	opts = append(opts,
 		grpc.ChainStreamInterceptor(
 			selector.StreamServerInterceptor(
@@ -71,15 +67,10 @@ func New(svc KV, cluster Cluster, logger zerolog.Logger, opts ...grpc.ServerOpti
 	healthSrv.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(s, healthSrv)
 
-	srv := &kvServer{
-		svc:     svc,
-		cluster: cluster,
-	}
-	api.RegisterKVServer(s, srv)
+	api.RegisterKVServer(s, &kvServer{svc: svc, cluster: cluster})
 	return s
 }
 
-// Get returns the value stored under a key.
 func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetResponse, error) {
 	value, err := s.svc.Get(req.Key)
 	if err != nil {
@@ -88,7 +79,6 @@ func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetRespon
 	return &api.GetResponse{Key: req.Key, Value: value}, nil
 }
 
-// Set stores a value under a key for the request's TTL.
 func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetResponse, error) {
 	if !req.Ttl.IsValid() {
 		return nil, status.Error(codes.InvalidArgument, "ttl must be a valid duration")
@@ -99,7 +89,6 @@ func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetRespon
 	return &api.SetResponse{Ok: true}, nil
 }
 
-// Delete removes a key.
 func (s *kvServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.DeleteResponse, error) {
 	if err := s.svc.Delete(ctx, req.Key); err != nil {
 		return nil, toStatus(err)
@@ -107,7 +96,6 @@ func (s *kvServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.Del
 	return &api.DeleteResponse{Ok: true}, nil
 }
 
-// List streams every unexpired entry.
 func (s *kvServer) List(req *emptypb.Empty, stream grpc.ServerStreamingServer[api.GetResponse]) error {
 	for e := range s.svc.List() {
 		if err := stream.Context().Err(); err != nil {
@@ -120,7 +108,6 @@ func (s *kvServer) List(req *emptypb.Empty, stream grpc.ServerStreamingServer[ap
 	return nil
 }
 
-// GetServers returns the servers in the cluster.
 func (s *kvServer) GetServers(ctx context.Context, req *emptypb.Empty) (*api.GetServersResponse, error) {
 	servers, err := s.cluster.Servers()
 	if err != nil {
@@ -137,7 +124,6 @@ func toServer(s kv.Server) *api.Server {
 	return &api.Server{Id: s.ID, RpcAddr: s.Addr, IsLeader: s.IsLeader}
 }
 
-// toStatus converts a domain error into a gRPC status error.
 func toStatus(err error) error {
 	switch {
 	case errors.Is(err, kv.ErrNotFound):
@@ -158,8 +144,6 @@ func interceptorLogger(l zerolog.Logger) logging.Logger {
 		switch lvl {
 		case logging.LevelDebug:
 			event = l.Debug()
-		case logging.LevelInfo:
-			event = l.Info()
 		case logging.LevelWarn:
 			event = l.Warn()
 		case logging.LevelError:

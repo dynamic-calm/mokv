@@ -29,7 +29,7 @@ func (e Entry) Expired(now time.Time) bool {
 // only through Apply. It never reads the clock, so every node that applies
 // the same commands holds the same entries. It is safe for concurrent use.
 type Store struct {
-	entries sync.Map // key string -> *Entry
+	entries sync.Map
 }
 
 // NewStore returns an empty Store.

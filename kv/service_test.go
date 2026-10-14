@@ -10,7 +10,6 @@ import (
 	"github.com/dynamic-calm/mokv/kv/kvtest"
 )
 
-// clock is a fake clock that only moves when advanced.
 type clock struct {
 	now time.Time
 }

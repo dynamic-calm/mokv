@@ -7,11 +7,12 @@ import (
 	"sync"
 
 	"github.com/dynamic-calm/mokv/logger"
-	"github.com/rs/zerolog/log"
-
 	"github.com/hashicorp/memberlist"
 	"github.com/hashicorp/serf/serf"
+	"github.com/rs/zerolog/log"
 )
+
+const rpcAddrTag = "rpc_addr"
 
 // Handler is notified when members join or leave the cluster.
 type Handler interface {
@@ -19,23 +20,22 @@ type Handler interface {
 	Leave(name string) error
 }
 
-// rpcAddrTag is the Serf tag that carries a member's RPC address.
-const rpcAddrTag = "rpc_addr"
-
-// MembershipConfig holds the configuration for the Serf-based discovery mechanism.
-type MembershipConfig struct {
+// Config configures a Membership.
+type Config struct {
+	// NodeName uniquely identifies the node in the cluster.
 	NodeName string
 	// BindAddr is the address Serf listens on.
 	BindAddr string
 	// RPCAddr is the address the node serves RPCs and Raft on. It is passed
 	// to the Handler of other members when this node joins.
-	RPCAddr        string
+	RPCAddr string
+	// StartJoinAddrs are the Serf addresses of existing members to join.
 	StartJoinAddrs []string
 }
 
-// Membership manages the Serf cluster membership and handles node events.
+// Membership tracks the members of the cluster and notifies a Handler when
+// they join or leave.
 type Membership struct {
-	MembershipConfig
 	serf    *serf.Serf
 	handler Handler
 	events  chan serf.Event
@@ -44,24 +44,55 @@ type Membership struct {
 	err     error
 }
 
-// NewMembership creates a Membership, starts Serf, and joins the cluster
-// if seed addresses are provided.
-func NewMembership(h Handler, cfg MembershipConfig) (*Membership, error) {
-	m := &Membership{handler: h, MembershipConfig: cfg}
-	if err := m.setupSerf(); err != nil {
+// New starts Serf and joins the cluster through cfg.StartJoinAddrs, if any.
+// Other members joining and leaving are reported to h until Leave is called.
+func New(h Handler, cfg Config) (*Membership, error) {
+	addr, err := net.ResolveTCPAddr("tcp", cfg.BindAddr)
+	if err != nil {
 		return nil, err
 	}
+	stdLogger := stdlog.New(logger.NewZerologWriter(log.With().Str("component", "serf").Logger()), "", 0)
 
+	mlConfig := memberlist.DefaultLocalConfig()
+	mlConfig.Logger = stdLogger
+	mlConfig.BindAddr = addr.IP.String()
+	mlConfig.BindPort = addr.Port
+	mlConfig.AdvertisePort = addr.Port
+
+	m := &Membership{
+		handler: h,
+		events:  make(chan serf.Event),
+		done:    make(chan struct{}),
+	}
+	config := serf.DefaultConfig()
+	config.Init()
+	config.Logger = stdLogger
+	config.MemberlistConfig = mlConfig
+	config.EventCh = m.events
+	config.Tags = map[string]string{rpcAddrTag: cfg.RPCAddr}
+	config.NodeName = cfg.NodeName
+
+	m.serf, err = serf.Create(config)
+	if err != nil {
+		return nil, err
+	}
+	go m.handleEvents()
+
+	if len(cfg.StartJoinAddrs) > 0 {
+		if _, err := m.serf.Join(cfg.StartJoinAddrs, true); err != nil {
+			return nil, err
+		}
+	}
 	return m, nil
 }
 
-// Members returns the list of current members in the Serf cluster.
+// Members returns the current members of the cluster.
 func (m *Membership) Members() []serf.Member {
 	return m.serf.Members()
 }
 
-// Leave gracefully causes the local node to leave the Serf cluster and
-// shuts down Serf. Calls after the first return the first result.
+// Leave gracefully leaves the cluster and shuts down Serf. Calls after the
+// first return the first result.
 func (m *Membership) Leave() error {
 	m.leave.Do(func() {
 		defer close(m.done)
@@ -73,57 +104,7 @@ func (m *Membership) Leave() error {
 	return m.err
 }
 
-func (m *Membership) isLocal(member serf.Member) bool {
-	return m.serf.LocalMember().Name == member.Name
-}
-
-func (m *Membership) setupSerf() error {
-	addr, err := net.ResolveTCPAddr("tcp", m.BindAddr)
-	if err != nil {
-		return err
-	}
-
-	// Setup logger
-	serfLogger := log.With().Str("component", "serf").Logger()
-	stdLogger := stdlog.New(logger.NewZerologWriter(serfLogger), "", 0)
-
-	// Serf config
-	config := serf.DefaultConfig()
-	config.Init()
-	config.Logger = stdLogger
-
-	// Memberlist config
-	mlConfig := memberlist.DefaultLocalConfig()
-	mlConfig.Logger = stdLogger
-	mlConfig.BindAddr = addr.IP.String()
-	mlConfig.BindPort = addr.Port
-	mlConfig.AdvertisePort = addr.Port
-	config.MemberlistConfig = mlConfig
-
-	m.events = make(chan serf.Event)
-	m.done = make(chan struct{})
-	config.EventCh = m.events
-	config.Tags = map[string]string{rpcAddrTag: m.RPCAddr}
-	config.NodeName = m.NodeName
-
-	m.serf, err = serf.Create(config)
-	if err != nil {
-		return err
-	}
-
-	go m.eventHandler()
-
-	if m.StartJoinAddrs != nil {
-		_, err = m.serf.Join(m.StartJoinAddrs, true)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (m *Membership) eventHandler() {
+func (m *Membership) handleEvents() {
 	for {
 		var e serf.Event
 		select {
@@ -131,47 +112,34 @@ func (m *Membership) eventHandler() {
 			return
 		case e = <-m.events:
 		}
+
+		var handle func(serf.Member)
 		switch e.EventType() {
 		case serf.EventMemberJoin:
-			for _, member := range e.(serf.MemberEvent).Members {
-				if m.isLocal(member) {
-					continue
-				}
-				m.handleJoin(member)
-			}
+			handle = m.handleJoin
 		case serf.EventMemberLeave:
-			for _, member := range e.(serf.MemberEvent).Members {
-				if m.isLocal(member) {
-					continue
-				}
-				m.handleLeave(member)
+			handle = m.handleLeave
+		default:
+			continue
+		}
+		for _, member := range e.(serf.MemberEvent).Members {
+			if member.Name != m.serf.LocalMember().Name {
+				handle(member)
 			}
 		}
 	}
 }
 
 func (m *Membership) handleJoin(member serf.Member) {
-	log.Info().
-		Str("member_name", member.Name).
-		Str("member_addr", member.Addr.String()).
-		Msg("handling join event")
-
-	err := m.handler.Join(member.Name, member.Tags[rpcAddrTag])
-	if err != nil {
-		log.Error().Err(err).Msg("failed to join")
-		return
+	log.Info().Str("member", member.Name).Str("addr", member.Addr.String()).Msg("member joined")
+	if err := m.handler.Join(member.Name, member.Tags[rpcAddrTag]); err != nil {
+		log.Error().Err(err).Str("member", member.Name).Msg("failed to handle join")
 	}
-	log.Info().Str("member", member.Name).Msg("successfully handled join")
 }
 
 func (m *Membership) handleLeave(member serf.Member) {
-	log.Info().
-		Str("member_name", member.Name).
-		Str("member_addr", member.Addr.String()).
-		Msg("handling leave event")
-
-	err := m.handler.Leave(member.Name)
-	if err != nil {
-		log.Error().Err(err).Str("member", member.Name).Msg("failed to process leave")
+	log.Info().Str("member", member.Name).Str("addr", member.Addr.String()).Msg("member left")
+	if err := m.handler.Leave(member.Name); err != nil {
+		log.Error().Err(err).Str("member", member.Name).Msg("failed to handle leave")
 	}
 }

@@ -2,6 +2,7 @@ package discovery_test
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -31,10 +32,11 @@ func (h *testHandler) Leave(id string) error {
 }
 
 func setupMember(t *testing.T, members []*discovery.Membership, port int) ([]*discovery.Membership, *testHandler) {
+	t.Helper()
 	id := len(members)
-	addr := fmt.Sprintf("%s:%d", "127.0.0.1", port)
-	c := discovery.MembershipConfig{
-		NodeName: fmt.Sprintf("%d", id),
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	cfg := discovery.Config{
+		NodeName: strconv.Itoa(id),
 		BindAddr: addr,
 		RPCAddr:  addr,
 	}
@@ -44,18 +46,18 @@ func setupMember(t *testing.T, members []*discovery.Membership, port int) ([]*di
 		h.joins = make(chan map[string]string, 3)
 		h.leaves = make(chan string, 3)
 	} else {
-		// For new members: connect to 127.0.0.1:8000 to join the cluster
-		c.StartJoinAddrs = []string{members[0].BindAddr}
+		cfg.StartJoinAddrs = []string{seedAddr}
 	}
 
-	m, err := discovery.NewMembership(h, c)
+	m, err := discovery.New(h, cfg)
 	if err != nil {
-		t.Fatalf("error creating discovery: %v", err)
+		t.Fatalf("Setup: discovery.New(%+v): %v", cfg, err)
 	}
 	t.Cleanup(func() { _ = m.Leave() })
-	members = append(members, m)
-	return members, h
+	return append(members, m), h
 }
+
+const seedAddr = "127.0.0.1:8000"
 
 func TestMembership(t *testing.T) {
 	members, handler := setupMember(t, nil, 8000)
@@ -75,7 +77,7 @@ func TestMembership(t *testing.T) {
 	}
 
 	if err := members[2].Leave(); err != nil {
-		t.Fatal(err)
+		t.Fatalf("Leave() = %v, want nil", err)
 	}
 
 	select {

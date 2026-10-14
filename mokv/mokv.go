@@ -25,18 +25,28 @@ import (
 	"google.golang.org/grpc/stats/opentelemetry"
 )
 
-// expireInterval is how often the leader looks for expired keys.
-const expireInterval = time.Second
+const (
+	expireInterval  = time.Second
+	shutdownTimeout = 25 * time.Second
+)
 
-// Config holds the configuration parameters for the MOKV server node.
+// Config configures a node.
 type Config struct {
-	DataDir        string
-	NodeName       string
-	BindAddr       string
-	RPCPort        int
-	MetricsPort    int
+	// DataDir is where the Raft log and snapshots are stored.
+	DataDir string
+	// NodeName uniquely identifies the node in the cluster.
+	NodeName string
+	// BindAddr is the address Serf listens on. Its host is also the host
+	// other nodes reach the RPC port at.
+	BindAddr string
+	// RPCPort is the port gRPC and Raft are served on.
+	RPCPort int
+	// MetricsPort is the port Prometheus metrics are served on.
+	MetricsPort int
+	// StartJoinAddrs are the Serf addresses of existing members to join.
 	StartJoinAddrs []string
-	Bootstrap      bool
+	// Bootstrap makes the node start a new cluster if it has no state.
+	Bootstrap bool
 }
 
 // MOKV is a mokv node: the key-value service served over gRPC, replicated
@@ -52,17 +62,18 @@ type MOKV struct {
 	metricsServer *http.Server
 }
 
-// New creates a node from cfg. gRPC and Raft share the RPC port.
+// New creates a node from cfg and joins the cluster. Serving starts with
+// Listen.
 func New(cfg *Config) (_ *MOKV, err error) {
 	host, _, err := net.SplitHostPort(cfg.BindAddr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse bind address: %w", err)
+		return nil, fmt.Errorf("parsing bind address: %w", err)
 	}
 	rpcAddr := fmt.Sprintf("%s:%d", host, cfg.RPCPort)
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.RPCPort))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create listener: %w", err)
+		return nil, fmt.Errorf("listening on RPC port: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -70,8 +81,6 @@ func New(cfg *Config) (_ *MOKV, err error) {
 		}
 	}()
 
-	// Raft connections start with a header byte; the rest are gRPC. Raft is
-	// matched first so it takes precedence.
 	mux := cmux.New(ln)
 	raftLn := mux.Match(consensus.Match)
 	grpcLn := mux.Match(cmux.Any())
@@ -85,7 +94,7 @@ func New(cfg *Config) (_ *MOKV, err error) {
 		Bootstrap: cfg.Bootstrap,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create raft node: %w", err)
+		return nil, fmt.Errorf("starting raft: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -96,21 +105,21 @@ func New(cfg *Config) (_ *MOKV, err error) {
 
 	exp, err := prometheus.New()
 	if err != nil {
-		return nil, fmt.Errorf("failed to start prometheus exporter: %w", err)
+		return nil, fmt.Errorf("creating prometheus exporter: %w", err)
 	}
 	meterProvider := metric.NewMeterProvider(metric.WithReader(exp))
 	grpcServer := server.New(svc, node, log.Logger, opentelemetry.ServerOption(opentelemetry.Options{
 		MetricsOptions: opentelemetry.MetricsOptions{MeterProvider: meterProvider},
 	}))
 
-	membership, err := discovery.NewMembership(node, discovery.MembershipConfig{
+	membership, err := discovery.New(node, discovery.Config{
 		NodeName:       cfg.NodeName,
 		BindAddr:       cfg.BindAddr,
 		RPCAddr:        rpcAddr,
 		StartJoinAddrs: cfg.StartJoinAddrs,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create membership: %w", err)
+		return nil, fmt.Errorf("joining cluster: %w", err)
 	}
 
 	return &MOKV{
@@ -136,43 +145,38 @@ func (m *MOKV) Listen(ctx context.Context) error {
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	// Start metrics server
 	g.Go(func() error {
 		log.Info().Str("addr", m.metricsServer.Addr).Msg("metrics server listening...")
 		if err := m.metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("metrics server failed: %w", err)
+			return fmt.Errorf("serving metrics: %w", err)
 		}
 		return nil
 	})
 
-	// Start gRPC server
 	g.Go(func() error {
 		log.Info().Str("addr", m.grpcLn.Addr().String()).Msg("gRPC server listening...")
 		if err := m.grpcServer.Serve(m.grpcLn); err != nil {
-			return fmt.Errorf("gRPC server error: %w", err)
+			return fmt.Errorf("serving gRPC: %w", err)
 		}
 		return nil
 	})
 
-	// Expire keys while this node is the leader.
 	g.Go(func() error {
 		m.svc.RunExpiry(ctx, expireInterval)
 		return nil
 	})
 
-	// Start Multiplexer
 	g.Go(func() error {
 		log.Info().Msg("multiplexer (RAFT, gRPC) listening...")
 		if err := m.cmux.Serve(); err != nil {
-			return fmt.Errorf("multiplexer server error: %w", err)
+			return fmt.Errorf("serving multiplexer: %w", err)
 		}
 		return nil
 	})
 
-	// Handle shutdown
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 
 		if err := m.close(shutdownCtx); err != nil {
@@ -187,21 +191,21 @@ func (m *MOKV) close(ctx context.Context) error {
 	var errs []error
 
 	if err := m.metricsServer.Shutdown(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("metrics server shutdown error: %w", err))
+		errs = append(errs, fmt.Errorf("shutting down metrics server: %w", err))
 	}
 
 	if err := m.membership.Leave(); err != nil {
-		errs = append(errs, fmt.Errorf("membership leave error: %w", err))
+		errs = append(errs, fmt.Errorf("leaving cluster: %w", err))
 	}
 
 	if err := m.node.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("raft node close error: %w", err))
+		errs = append(errs, fmt.Errorf("closing raft: %w", err))
 	}
 
 	m.grpcServer.GracefulStop()
 
 	if err := m.meterProvider.Shutdown(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("meter provider shutdown error: %w", err))
+		errs = append(errs, fmt.Errorf("shutting down meter provider: %w", err))
 	}
 
 	return errors.Join(errs...)

@@ -10,8 +10,6 @@ import (
 	"github.com/hashicorp/raft"
 )
 
-// raftHeader is the first byte of every Raft connection, so a listener
-// shared with other protocols can tell Raft connections apart.
 const raftHeader byte = 1
 
 var errNotRaft = errors.New("not a raft connection")
@@ -26,16 +24,12 @@ func Match(r io.Reader) bool {
 	return b[0] == raftHeader
 }
 
-// streamLayer is a raft.StreamLayer over a listener that may be shared with
-// other protocols. Outgoing connections start with raftHeader, and incoming
-// ones must.
 type streamLayer struct {
 	ln net.Listener
 }
 
 var _ raft.StreamLayer = (*streamLayer)(nil)
 
-// Dial connects to another Raft node and sends raftHeader.
 func (s *streamLayer) Dial(addr raft.ServerAddress, timeout time.Duration) (net.Conn, error) {
 	dialer := &net.Dialer{Timeout: timeout}
 	conn, err := dialer.Dial("tcp", string(addr))
@@ -49,7 +43,6 @@ func (s *streamLayer) Dial(addr raft.ServerAddress, timeout time.Duration) (net.
 	return conn, nil
 }
 
-// Accept accepts a connection and consumes its raftHeader.
 func (s *streamLayer) Accept() (net.Conn, error) {
 	conn, err := s.ln.Accept()
 	if err != nil {
@@ -58,7 +51,7 @@ func (s *streamLayer) Accept() (net.Conn, error) {
 	b := make([]byte, 1)
 	if _, err := io.ReadFull(conn, b); err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("failed to read raft header: %w", err)
+		return nil, fmt.Errorf("reading raft header: %w", err)
 	}
 	if b[0] != raftHeader {
 		_ = conn.Close()
@@ -67,12 +60,10 @@ func (s *streamLayer) Accept() (net.Conn, error) {
 	return conn, nil
 }
 
-// Close closes the listener.
 func (s *streamLayer) Close() error {
 	return s.ln.Close()
 }
 
-// Addr returns the listener's network address.
 func (s *streamLayer) Addr() net.Addr {
 	return s.ln.Addr()
 }

@@ -144,7 +144,9 @@ func TestStoreConcurrent(t *testing.T) {
 		})
 		wg.Go(func() {
 			for range operations {
-				_, _ = s.Get(key, time.Now()) // The key may or may not exist.
+				if _, err := s.Get(key, time.Now()); err != nil && !errors.Is(err, kv.ErrNotFound) {
+					t.Errorf("Get(%q) error = %v, want nil or %v", key, err, kv.ErrNotFound)
+				}
 			}
 		})
 		wg.Go(func() {

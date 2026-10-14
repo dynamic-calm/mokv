@@ -377,10 +377,8 @@ func TestWith(t *testing.T) {
 		value := "value"
 		newLogger := hclogLogger.With(key, value)
 
-		// Log a message using the new logger
 		newLogger.Info("test message")
 
-		// Parse the logged message
 		var msg map[string]any
 		if err := json.Unmarshal(buf.Bytes(), &msg); err != nil {
 			t.Fatalf("Expected log output to be a valid JSON, got: %s", buf.String())

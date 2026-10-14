@@ -20,13 +20,12 @@ const (
 	serviceName        = "mokv"
 )
 
-// CLI represents the command-line interface application context and configuration.
-type CLI struct {
+type cli struct {
 	config *mokv.Config
 }
 
 func main() {
-	app := &CLI{}
+	app := &cli{}
 	cmd := &cobra.Command{
 		Use:          "mokv",
 		Short:        "A distributed key-value store",
@@ -44,9 +43,7 @@ func main() {
 	}
 }
 
-// setupConfig initializes the configuration by reading from the config file (if provided)
-// and merging flag values into the application configuration struct.
-func (c *CLI) setupConfig(cmd *cobra.Command, args []string) error {
+func (c *cli) setupConfig(cmd *cobra.Command, args []string) error {
 	c.config = &mokv.Config{}
 
 	configFile, err := cmd.Flags().GetString("config-file")
@@ -56,10 +53,8 @@ func (c *CLI) setupConfig(cmd *cobra.Command, args []string) error {
 
 	if configFile != "" {
 		viper.SetConfigFile(configFile)
-		if err := viper.ReadInConfig(); err != nil {
-			if !errors.As(err, &viper.ConfigFileNotFoundError{}) {
-				return err
-			}
+		if err := viper.ReadInConfig(); err != nil && !errors.As(err, &viper.ConfigFileNotFoundError{}) {
+			return err
 		}
 	}
 
@@ -82,14 +77,12 @@ func (c *CLI) setupConfig(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// run executes the main application logic, starting the mokv service.
-func (c *CLI) run(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
-	service, err := mokv.New(c.config)
+func (c *cli) run(cmd *cobra.Command, args []string) error {
+	m, err := mokv.New(c.config)
 	if err != nil {
 		return err
 	}
-	return service.Listen(ctx)
+	return m.Listen(cmd.Context())
 }
 
 func setupFlags(cmd *cobra.Command) error {
