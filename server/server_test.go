@@ -27,8 +27,15 @@ type cluster struct{}
 
 func (cluster) Servers() ([]kv.Server, error) { return nil, nil }
 
-// setupTestServer creates and starts a test server, returning cleanup function
+// setupTestServer starts a server for a one-node cluster, returning a client
+// and a cleanup function.
 func setupTestServer(t *testing.T) (api.KVClient, func()) {
+	t.Helper()
+	return startServer(t, &kvtest.Replicator{Store: kv.NewStore()})
+}
+
+// startServer starts a server that replicates through r.
+func startServer(t *testing.T, r *kvtest.Replicator) (api.KVClient, func()) {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", ":0")
@@ -36,8 +43,7 @@ func setupTestServer(t *testing.T) (api.KVClient, func()) {
 		t.Fatalf("failed to create listener: %v", err)
 	}
 
-	store := kv.NewStore()
-	svc := kv.NewService(store, &kvtest.Replicator{Store: store}, time.Now)
+	svc := kv.NewService(r.Store, r, time.Now)
 	srv := server.New(svc, cluster{}, log.Logger)
 
 	ready := make(chan bool)
@@ -101,21 +107,21 @@ func TestAPI(t *testing.T) {
 		}
 	})
 
-	t.Run("get non-existent key returns error", func(t *testing.T) {
+	t.Run("get non-existent key returns not found", func(t *testing.T) {
 		_, err := client.Get(ctx, &api.GetRequest{Key: "unknown"})
-		if err == nil {
-			t.Error("Get() with non-existent key: expected error, got nil")
+		if status.Code(err) != codes.NotFound {
+			t.Errorf("Get() with non-existent key: got %v, want NotFound", err)
 		}
 	})
 
-	t.Run("fails on invalid ttl", func(t *testing.T) {
+	t.Run("fails on missing ttl", func(t *testing.T) {
 		setReq := &api.SetRequest{
 			Key:   "test_key",
 			Value: []byte("test_value"),
 		}
 		_, err := client.Set(ctx, setReq)
-		if err == nil {
-			t.Error("Set() with no ttl: expected error, got nil")
+		if status.Code(err) != codes.InvalidArgument {
+			t.Errorf("Set() with no ttl: got %v, want InvalidArgument", err)
 		}
 	})
 
@@ -132,6 +138,22 @@ func TestAPI(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestWriteOnFollower(t *testing.T) {
+	t.Parallel()
+
+	client, cleanup := startServer(t, &kvtest.Replicator{Store: kv.NewStore(), Follower: true})
+	defer cleanup()
+
+	_, err := client.Set(t.Context(), &api.SetRequest{Key: "key", Ttl: durationpb.New(time.Minute)})
+	if status.Code(err) != codes.Unavailable {
+		t.Errorf("Set() on follower: got %v, want Unavailable", err)
+	}
+	_, err = client.Delete(t.Context(), &api.DeleteRequest{Key: "key"})
+	if status.Code(err) != codes.Unavailable {
+		t.Errorf("Delete() on follower: got %v, want Unavailable", err)
+	}
 }
 
 func TestStream(t *testing.T) {

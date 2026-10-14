@@ -46,7 +46,11 @@ func NewService(store *Store, r Replicator, now func() time.Time) *Service {
 // replicated, so a follower may return a value the leader has already
 // changed. It returns ErrNotFound if the key does not exist or has expired.
 func (s *Service) Get(key string) ([]byte, error) {
-	return s.store.Get(key, s.now())
+	value, err := s.store.Get(key, s.now())
+	if err != nil {
+		return nil, fmt.Errorf("getting key %q: %w", key, err)
+	}
+	return value, nil
 }
 
 // Set stores value under key for ttl. It returns ErrInvalidTTL if ttl is not
