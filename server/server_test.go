@@ -26,6 +26,14 @@ type testKV struct {
 	*store.Store
 }
 
+func (t *testKV) Set(_ context.Context, key string, value []byte, expiresAt time.Time) error {
+	return t.Store.Set(key, value, expiresAt)
+}
+
+func (t *testKV) Delete(_ context.Context, key string) error {
+	return t.Store.Delete(key)
+}
+
 func (t *testKV) GetServers() ([]*api.Server, error) {
 	return nil, nil
 }

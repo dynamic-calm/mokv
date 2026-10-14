@@ -51,7 +51,7 @@ func (b *Builder) Build(info base.PickerBuildInfo) balancer.Picker {
 type Picker struct {
 	leader    balancer.SubConn
 	followers []balancer.SubConn
-	current   uint64
+	current   atomic.Uint64
 }
 
 var _ balancer.Picker = (*Picker)(nil)
@@ -61,10 +61,6 @@ var _ balancer.Picker = (*Picker)(nil)
 // write (Set/Delete) or a read.
 func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	var result balancer.PickResult
-
-	if p.leader == nil && len(p.followers) == 0 {
-		return result, balancer.ErrNoSubConnAvailable
-	}
 
 	methodName := info.FullMethodName
 
@@ -99,7 +95,7 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		result.SubConn = p.nextFollower()
 		log.Debug().
 			Str("method", methodName).
-			Uint64("follower_index", p.current%uint64(len(p.followers))).
+			Uint64("follower_index", p.current.Load()%uint64(len(p.followers))).
 			Msg("picked follower for read")
 		return result, nil
 	}
@@ -121,7 +117,7 @@ func (p *Picker) nextFollower() balancer.SubConn {
 	if numFollowers == 0 {
 		return nil
 	}
-	cur := atomic.AddUint64(&p.current, uint64(1))
+	cur := p.current.Add(1)
 	idx := int(cur % uint64(numFollowers))
 	return p.followers[idx]
 }

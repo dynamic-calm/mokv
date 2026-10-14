@@ -2,6 +2,7 @@ package kv
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -100,8 +101,7 @@ func New(store Storer, cfg *Config) (*KV, error) {
 		done:  make(chan struct{}),
 	}
 	if err := kv.setupRaft(kv.cfg.DataDir); err != nil {
-		log.Error().Err(err).Msg("failed setting up raft")
-		return nil, err
+		return nil, fmt.Errorf("failed to set up raft: %w", err)
 	}
 
 	kv.wg.Go(kv.expireLoop)
@@ -158,23 +158,19 @@ func (kv *KV) Get(key string) ([]byte, error) {
 
 // Set applies a set operation to the distributed store via Raft.
 // The entry expires at expiresAt; a zero expiresAt means it never expires.
-func (kv *KV) Set(key string, value []byte, expiresAt time.Time) error {
-	_, err := kv.apply(RequestTypeSetWithExpiry, &api.SetRequest{Key: key, Value: value}, expiresAt)
+func (kv *KV) Set(ctx context.Context, key string, value []byte, expiresAt time.Time) error {
+	_, err := kv.apply(ctx, RequestTypeSetWithExpiry, &api.SetRequest{Key: key, Value: value}, expiresAt)
 	if err != nil {
-		return fmt.Errorf(
-			"failed to apply replication setting key: %s, val: %s, from kv: %w",
-			key, string(value), err,
-		)
+		return fmt.Errorf("replicating set of key %q: %w", key, err)
 	}
 	return nil
 }
 
 // Delete applies a delete operation to the distributed store via Raft.
-func (kv *KV) Delete(key string) error {
-	// Replicate Delete
-	_, err := kv.apply(RequestTypeDelete, &api.DeleteRequest{Key: key}, time.Time{})
+func (kv *KV) Delete(ctx context.Context, key string) error {
+	_, err := kv.apply(ctx, RequestTypeDelete, &api.DeleteRequest{Key: key}, time.Time{})
 	if err != nil {
-		return fmt.Errorf("failed to apply replication deleting key: %s from kv: %w", key, err)
+		return fmt.Errorf("replicating delete of key %q: %w", key, err)
 	}
 	return nil
 }
@@ -299,15 +295,23 @@ func (kv *KV) isLeader() bool {
 	return kv.raft.State() == raft.Leader
 }
 
-// apply encodes the request and submits it to Raft.
+// apply encodes the request and submits it to Raft. The Raft enqueue timeout
+// is bounded by the context deadline, if any.
 // expiresAt is only encoded for request types that carry an expiry.
-func (kv *KV) apply(reqType RequestType, req proto.Message, expiresAt time.Time) (any, error) {
+func (kv *KV) apply(ctx context.Context, reqType RequestType, req proto.Message, expiresAt time.Time) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	b, err := encodeRequest(reqType, req, expiresAt)
 	if err != nil {
 		return nil, err
 	}
 
-	future := kv.raft.Apply(b, RaftTimeout)
+	timeout := RaftTimeout
+	if deadline, ok := ctx.Deadline(); ok {
+		timeout = min(timeout, time.Until(deadline))
+	}
+	future := kv.raft.Apply(b, timeout)
 	if err := future.Error(); err != nil {
 		return nil, err
 	}
@@ -373,7 +377,7 @@ func (kv *KV) setupRaft(dataDir string) error {
 	}
 	stableStore, err := raftboltdb.NewBoltStore(filepath.Join(raftDir, "stable"))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create stable store: %w", err)
 	}
 	snapshotStore, err := raft.NewFileSnapshotStore(
 		filepath.Join(dataDir, "raft"),

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"iter"
 	"net"
 	"net/http"
 	"os/signal"
@@ -42,15 +41,6 @@ type Config struct {
 	LogLevel       string
 }
 
-// Storer defines the interface for a the key-value storage.
-type Storer interface {
-	Get(key string) ([]byte, error)
-	Set(key string, value []byte, expiresAt time.Time) error
-	Delete(key string) error
-	List() iter.Seq[[]byte]
-	Close() error
-}
-
 // GetEnv defines a function signature for retrieving environment variables.
 type GetEnv func(string) string
 
@@ -58,7 +48,7 @@ type GetEnv func(string) string
 type MOKV struct {
 	cfg           *Config
 	getEnv        GetEnv
-	kv            Storer
+	kv            *kv.KV
 	meterProvider *metric.MeterProvider
 	grpcServer    *grpc.Server
 	metricsServer *http.Server
@@ -239,9 +229,5 @@ func (r *MOKV) close(ctx context.Context) error {
 		errs = append(errs, fmt.Errorf("meter provider shutdown error: %w", err))
 	}
 
-	if len(errs) > 0 {
-		return fmt.Errorf("close errors: %v", errs)
-	}
-
-	return nil
+	return errors.Join(errs...)
 }
