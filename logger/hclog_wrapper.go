@@ -1,4 +1,3 @@
-// Taken from https://github.com/psapezhka/hclog-zerolog/blob/main/wrapper.go
 package logger
 
 import (
@@ -9,34 +8,28 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// DefaultNameField — field [hclog.Logger] name will be written to.
-//
-// [hclog] has a concept of logger name and, moreover, name inheritance
-// (when you create named logger on top of named logger).
-// Logger name acts like a prefix for the log message.
-// On the other hand, [zerolog] operates key/value pairs to add context to messages.
-// So, we convert the [hclog] logger name to key/value context pair for [zerolog]
-// This is a default, can be overridden while creating wrapper with the [NewWithCustomNameField]
+// DefaultNameField is the field a [Logger] writes its [hclog.Logger] name to.
+// hclog prefixes messages with the logger name, while zerolog adds context as
+// fields, so the name becomes a field. [NewWithCustomNameField] uses another
+// field.
 const DefaultNameField = "hclog_name"
 
-// Logger adapts a [zerolog.Logger] to the [hclog.Logger] interface.
+// Logger adapts a [zerolog.Logger] to the [hclog.Logger] interface. It is
+// based on https://github.com/psapezhka/hclog-zerolog.
 type Logger struct {
 	logger    zerolog.Logger
 	nameField string
 	name      string
 }
 
-// NewHCLogWrapper creates an instance of [Logger] wrapping provided [zerolog.Logger].
-//
-// Example of wrapping the default global zerolog logger
-// (using hashicorp/raft as an example of lib depending on [hclog.Logger])
+// NewHCLogWrapper returns a [Logger] that writes to logger. For example, to
+// use the global zerolog logger for [hashicorp/raft]:
 //
 //	raftLogger := log.With().Str("component", "raft").Logger()
 //	config := raft.DefaultConfig()
 //	config.Logger = logger.NewHCLogWrapper(raftLogger)
 //
-// See:
-//   - https://pkg.go.dev/github.com/hashicorp/raft#Config
+// [hashicorp/raft]: https://pkg.go.dev/github.com/hashicorp/raft#Config
 func NewHCLogWrapper(logger zerolog.Logger) *Logger {
 	return &Logger{
 		logger:    logger.With().Str(DefaultNameField, "").Logger(),
@@ -45,8 +38,8 @@ func NewHCLogWrapper(logger zerolog.Logger) *Logger {
 	}
 }
 
-// NewWithCustomNameField — does exactly the same as [NewHCLogWrapper] but with the ability to set field (key)
-// the [hclog.Logger] name will be written to.
+// NewWithCustomNameField is like [NewHCLogWrapper], but writes the
+// [hclog.Logger] name to nameField instead of [DefaultNameField].
 func NewWithCustomNameField(logger zerolog.Logger, nameField string) *Logger {
 	return &Logger{
 		logger:    logger.With().Str(nameField, "").Logger(),
@@ -70,7 +63,6 @@ func (l *Logger) Log(level hclog.Level, msg string, args ...any) {
 	case hclog.NoLevel:
 		l.logger.Log().Fields(args).Msg(msg)
 	case hclog.Off:
-		// no-op
 	default:
 		l.logger.Error().Msgf("Unknown log level: %s", level)
 	}

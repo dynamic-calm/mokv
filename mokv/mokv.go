@@ -1,27 +1,22 @@
-// Package mokv runs a mokv node and provides a client for it.
+// Package mokv wires the parts of a mokv node together and runs them.
 package mokv
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
-	"github.com/rs/zerolog/log"
-
+	"github.com/dynamic-calm/mokv/consensus"
 	"github.com/dynamic-calm/mokv/discovery"
 	"github.com/dynamic-calm/mokv/kv"
 	"github.com/dynamic-calm/mokv/server"
-	"github.com/dynamic-calm/mokv/store"
-	"github.com/hashicorp/raft"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/zerolog/log"
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
@@ -30,177 +25,158 @@ import (
 	"google.golang.org/grpc/stats/opentelemetry"
 )
 
-// Config holds the configuration parameters for the MOKV server node.
+const (
+	expireInterval  = time.Second
+	shutdownTimeout = 25 * time.Second
+)
+
+// Config configures a node.
 type Config struct {
-	DataDir        string
-	NodeName       string
-	BindAddr       string
-	RPCPort        int
-	MetricsPort    int
+	// DataDir is where the Raft log and snapshots are stored.
+	DataDir string
+	// NodeName uniquely identifies the node in the cluster.
+	NodeName string
+	// BindAddr is the address Serf listens on. Its host is also the host
+	// other nodes reach the RPC port at.
+	BindAddr string
+	// RPCPort is the port gRPC and Raft are served on.
+	RPCPort int
+	// MetricsPort is the port Prometheus metrics are served on.
+	MetricsPort int
+	// StartJoinAddrs are the Serf addresses of existing members to join.
 	StartJoinAddrs []string
-	Bootstrap      bool
-	LogLevel       string
+	// Bootstrap makes the node start a new cluster if it has no state.
+	Bootstrap bool
 }
 
-// GetEnv defines a function signature for retrieving environment variables.
-type GetEnv func(string) string
-
-// MOKV represents the main server instance orchestrating gRPC, Raft, and Discovery services.
-type MOKV struct {
-	cfg           *Config
-	getEnv        GetEnv
-	kv            *kv.KV
-	meterProvider *metric.MeterProvider
+// Node is a mokv node: the key-value service served over gRPC, replicated
+// with Raft, with cluster membership through Serf.
+type Node struct {
+	svc           *kv.Service
+	node          *consensus.Node
+	membership    *discovery.Membership
 	grpcServer    *grpc.Server
-	metricsServer *http.Server
 	grpcLn        net.Listener
 	cmux          cmux.CMux
-	membership    *discovery.Membership
+	meterProvider *metric.MeterProvider
+	metricsServer *http.Server
 }
 
-// New initializes a new MOKV server instance with the provided configuration.
-func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
+// New creates a node from cfg and joins the cluster. Serving starts with
+// Listen.
+func New(cfg *Config) (_ *Node, err error) {
 	host, _, err := net.SplitHostPort(cfg.BindAddr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse bind address: %w", err)
+		return nil, fmt.Errorf("parsing bind address: %w", err)
 	}
+	rpcAddr := fmt.Sprintf("%s:%d", host, cfg.RPCPort)
 
-	rpcAddr := fmt.Sprintf(":%d", cfg.RPCPort)
-	listener, err := net.Listen("tcp", rpcAddr)
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.RPCPort))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create listener: %w", err)
+		return nil, fmt.Errorf("listening on RPC port: %w", err)
 	}
-
-	raftAdvertiseAddr := fmt.Sprintf("%s:%d", host, cfg.RPCPort)
-
-	myCmux := cmux.New(listener)
-
-	// Configure KV store
-	rpcPort := strconv.Itoa(cfg.RPCPort)
-	kvCfg := &kv.Config{DataDir: cfg.DataDir}
-	kvCfg.Raft.BindAddr = raftAdvertiseAddr
-	kvCfg.Raft.RPCPort = rpcPort
-	kvCfg.Raft.LocalID = raft.ServerID(cfg.NodeName)
-	kvCfg.Raft.Bootstrap = cfg.Bootstrap
-
-	// Configure Raft listener.
-	// If the first byte of the incoming connection is our RaftRPC constant,
-	// we know the call was initiated by Raft, and not a regular operation: get, set, etc.
-	raftLn := myCmux.Match(func(r io.Reader) bool {
-		b := make([]byte, 1)
-		if _, err := r.Read(b); err != nil {
-			return false
+	defer func() {
+		if err != nil {
+			_ = ln.Close()
 		}
+	}()
 
-		return bytes.Equal(b, []byte{byte(kv.RaftRPC)})
+	mux := cmux.New(ln)
+	raftLn := sharedListener{mux.Match(consensus.Match)}
+	grpcLn := mux.Match(cmux.Any())
+
+	store := kv.NewStore()
+	node, err := consensus.New(store, consensus.Config{
+		ID:        cfg.NodeName,
+		Addr:      rpcAddr,
+		Listener:  raftLn,
+		DataDir:   cfg.DataDir,
+		Bootstrap: cfg.Bootstrap,
 	})
-
-	// The rest of connections are regular gRPC calls. Since this is set
-	// below, the Raft listener has precedence.
-	grpcLn := myCmux.Match(cmux.Any())
-
-	// Setup Raft stream layer
-	kvCfg.Raft.StreamLayer = kv.NewStreamLayer(raftLn)
-
-	// Initialize store and KV
-	st := store.New()
-	node, err := kv.New(st, kvCfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create KV store: %w", err)
+		return nil, fmt.Errorf("starting raft: %w", err)
 	}
+	defer func() {
+		if err != nil {
+			_ = node.Close()
+		}
+	}()
+	svc := kv.NewService(store, node, time.Now)
 
-	// Initialize Prometheus exporter
 	exp, err := prometheus.New()
 	if err != nil {
-		return nil, fmt.Errorf("failed to start prometheus exporter: %w", err)
+		return nil, fmt.Errorf("creating prometheus exporter: %w", err)
 	}
-
 	meterProvider := metric.NewMeterProvider(metric.WithReader(exp))
+	grpcServer := server.New(svc, node, log.Logger, opentelemetry.ServerOption(opentelemetry.Options{
+		MetricsOptions: opentelemetry.MetricsOptions{MeterProvider: meterProvider},
+	}))
 
-	// Configure gRPC server
-	serverOpts := []grpc.ServerOption{
-		opentelemetry.ServerOption(
-			opentelemetry.Options{
-				MetricsOptions: opentelemetry.MetricsOptions{
-					MeterProvider: meterProvider,
-				},
-			},
-		),
-	}
-
-	grpcServer := server.New(node, log.Logger, serverOpts...)
-
-	// Initialize membership
-	membership, err := discovery.NewMembership(node, discovery.MembershipConfig{
-		NodeName: cfg.NodeName,
-		BindAddr: cfg.BindAddr,
-		Tags: map[string]string{
-			"rpc_addr": raftAdvertiseAddr,
-		},
+	membership, err := discovery.New(node, discovery.Config{
+		NodeName:       cfg.NodeName,
+		BindAddr:       cfg.BindAddr,
+		RPCAddr:        rpcAddr,
 		StartJoinAddrs: cfg.StartJoinAddrs,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create membership: %w", err)
+		return nil, fmt.Errorf("joining cluster: %w", err)
 	}
 
-	// Setup metrics server
-	metricsServer := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.MetricsPort),
-		Handler: promhttp.Handler(),
-	}
-
-	return &MOKV{
-		kv:            node,
-		cfg:           cfg,
-		getEnv:        getEnv,
-		grpcLn:        grpcLn,
-		cmux:          myCmux,
-		grpcServer:    grpcServer,
+	return &Node{
+		svc:           svc,
+		node:          node,
 		membership:    membership,
+		grpcServer:    grpcServer,
+		grpcLn:        grpcLn,
+		cmux:          mux,
 		meterProvider: meterProvider,
-		metricsServer: metricsServer,
+		metricsServer: &http.Server{
+			Addr:    fmt.Sprintf(":%d", cfg.MetricsPort),
+			Handler: promhttp.Handler(),
+		},
 	}, nil
 }
 
 // Listen serves gRPC, Raft and metrics until ctx is done or a signal is
 // received, then shuts the node down.
-func (m *MOKV) Listen(ctx context.Context) error {
+func (m *Node) Listen(ctx context.Context) error {
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	// Start metrics server
 	g.Go(func() error {
 		log.Info().Str("addr", m.metricsServer.Addr).Msg("metrics server listening...")
 		if err := m.metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("metrics server failed: %w", err)
+			return fmt.Errorf("serving metrics: %w", err)
 		}
 		return nil
 	})
 
-	// Start gRPC server though gprcLn
 	g.Go(func() error {
 		log.Info().Str("addr", m.grpcLn.Addr().String()).Msg("gRPC server listening...")
 		if err := m.grpcServer.Serve(m.grpcLn); err != nil {
-			return fmt.Errorf("gRPC server error: %w", err)
+			return fmt.Errorf("serving gRPC: %w", err)
 		}
 		return nil
 	})
 
-	// Start Multiplexer
+	g.Go(func() error {
+		m.svc.RunExpiry(ctx, expireInterval)
+		return nil
+	})
+
 	g.Go(func() error {
 		log.Info().Msg("multiplexer (RAFT, gRPC) listening...")
-		if err := m.cmux.Serve(); err != nil {
-			return fmt.Errorf("multiplexer server error: %w", err)
+		if err := m.cmux.Serve(); err != nil && !errors.Is(err, net.ErrClosed) {
+			return fmt.Errorf("serving multiplexer: %w", err)
 		}
 		return nil
 	})
 
-	// Handle shutdown
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 
 		if err := m.close(shutdownCtx); err != nil {
@@ -211,26 +187,34 @@ func (m *MOKV) Listen(ctx context.Context) error {
 	return g.Wait()
 }
 
-func (r *MOKV) close(ctx context.Context) error {
+func (m *Node) close(ctx context.Context) error {
 	var errs []error
 
-	if err := r.metricsServer.Shutdown(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("metrics server shutdown error: %w", err))
+	if err := m.metricsServer.Shutdown(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("shutting down metrics server: %w", err))
 	}
 
-	if err := r.membership.Leave(); err != nil {
-		errs = append(errs, fmt.Errorf("membership leave error: %w", err))
+	if err := m.membership.Leave(); err != nil {
+		errs = append(errs, fmt.Errorf("leaving cluster: %w", err))
 	}
 
-	if err := r.kv.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("KV close error: %w", err))
+	if err := m.node.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("closing raft: %w", err))
 	}
 
-	r.grpcServer.GracefulStop()
+	m.grpcServer.GracefulStop()
 
-	if err := r.meterProvider.Shutdown(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("meter provider shutdown error: %w", err))
+	if err := m.meterProvider.Shutdown(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("shutting down meter provider: %w", err))
 	}
 
 	return errors.Join(errs...)
+}
+
+type sharedListener struct {
+	net.Listener
+}
+
+func (sharedListener) Close() error {
+	return nil
 }

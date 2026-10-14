@@ -11,49 +11,37 @@ import (
 	"time"
 
 	"github.com/dynamic-calm/mokv/api"
+	"github.com/dynamic-calm/mokv/kv"
+	"github.com/dynamic-calm/mokv/kv/kvtest"
 	"github.com/dynamic-calm/mokv/server"
-	"github.com/dynamic-calm/mokv/store"
 	"github.com/rs/zerolog/log"
-	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	status "google.golang.org/grpc/status"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type testKV struct {
-	*store.Store
-}
+type cluster struct{}
 
-func (t *testKV) Set(_ context.Context, key string, value []byte, expiresAt time.Time) error {
-	return t.Store.Set(key, value, expiresAt)
-}
+func (cluster) Servers() ([]kv.Server, error) { return nil, nil }
 
-func (t *testKV) Delete(_ context.Context, key string) error {
-	return t.Store.Delete(key)
-}
-
-func (t *testKV) GetServers() ([]*api.Server, error) {
-	return nil, nil
-}
-
-func (t *testKV) Close() error {
-	return nil
-}
-
-// setupTestServer creates and starts a test server, returning cleanup function
 func setupTestServer(t *testing.T) (api.KVClient, func()) {
+	t.Helper()
+	return startServer(t, &kvtest.Replicator{Store: kv.NewStore()})
+}
+
+func startServer(t *testing.T, r *kvtest.Replicator) (api.KVClient, func()) {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
-		t.Fatalf("failed to create listener: %v", err)
+		t.Fatalf("Setup: net.Listen(): %v", err)
 	}
 
-	st := &testKV{Store: store.New()}
-
-	srv := server.New(st, log.Logger)
+	svc := kv.NewService(r.Store, r, time.Now)
+	srv := server.New(svc, cluster{}, log.Logger)
 
 	ready := make(chan bool)
 	go func() {
@@ -71,7 +59,7 @@ func setupTestServer(t *testing.T) (api.KVClient, func()) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		t.Fatalf("failed to create grpc client: %v", err)
+		t.Fatalf("Setup: grpc.NewClient(): %v", err)
 	}
 
 	client := api.NewKVClient(clientConn)
@@ -116,21 +104,21 @@ func TestAPI(t *testing.T) {
 		}
 	})
 
-	t.Run("get non-existent key returns error", func(t *testing.T) {
+	t.Run("get non-existent key returns not found", func(t *testing.T) {
 		_, err := client.Get(ctx, &api.GetRequest{Key: "unknown"})
-		if err == nil {
-			t.Error("Get() with non-existent key: expected error, got nil")
+		if status.Code(err) != codes.NotFound {
+			t.Errorf("Get(%q) error = %v, want code %v", "unknown", err, codes.NotFound)
 		}
 	})
 
-	t.Run("fails on invalid ttl", func(t *testing.T) {
+	t.Run("fails on missing ttl", func(t *testing.T) {
 		setReq := &api.SetRequest{
 			Key:   "test_key",
 			Value: []byte("test_value"),
 		}
 		_, err := client.Set(ctx, setReq)
-		if err == nil {
-			t.Error("Set() with no ttl: expected error, got nil")
+		if status.Code(err) != codes.InvalidArgument {
+			t.Errorf("Set() without ttl error = %v, want code %v", err, codes.InvalidArgument)
 		}
 	})
 
@@ -143,10 +131,26 @@ func TestAPI(t *testing.T) {
 			}
 			_, err := client.Set(ctx, setReq)
 			if status.Code(err) != codes.InvalidArgument {
-				t.Errorf("Set() with ttl %v: got %v, want InvalidArgument", ttl, err)
+				t.Errorf("Set(ttl=%v) error = %v, want code %v", ttl, err, codes.InvalidArgument)
 			}
 		}
 	})
+}
+
+func TestWriteOnFollower(t *testing.T) {
+	t.Parallel()
+
+	client, cleanup := startServer(t, &kvtest.Replicator{Store: kv.NewStore(), Follower: true})
+	defer cleanup()
+
+	_, err := client.Set(t.Context(), &api.SetRequest{Key: "key", Ttl: durationpb.New(time.Minute)})
+	if status.Code(err) != codes.Unavailable {
+		t.Errorf("Set() on follower error = %v, want code %v", err, codes.Unavailable)
+	}
+	_, err = client.Delete(t.Context(), &api.DeleteRequest{Key: "key"})
+	if status.Code(err) != codes.Unavailable {
+		t.Errorf("Delete() on follower error = %v, want code %v", err, codes.Unavailable)
+	}
 }
 
 func TestStream(t *testing.T) {
@@ -163,21 +167,18 @@ func TestStream(t *testing.T) {
 		"key3": []byte("value3"),
 	}
 
-	// Populate test data
 	for k, v := range testData {
 		_, err := client.Set(ctx, &api.SetRequest{Key: k, Value: v, Ttl: durationpb.New(time.Second * 5)})
 		if err != nil {
-			t.Fatalf("failed to set test data: %v", err)
+			t.Fatalf("Setup: Set(): %v", err)
 		}
 	}
 
-	// Start stream
 	stream, err := client.List(ctx, &emptypb.Empty{})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
 
-	// Collect all streamed values
 	received := make(map[string]bool)
 	for {
 		resp, err := stream.Recv()
@@ -201,7 +202,6 @@ func TestStream(t *testing.T) {
 		}
 	}
 
-	// Verify all expected values were received
 	for _, v := range testData {
 		if !received[string(v)] {
 			t.Errorf("missing expected value: %q", v)
@@ -218,17 +218,15 @@ func TestListErrors(t *testing.T) {
 	t.Run("context cancellation", func(t *testing.T) {
 		ctx := context.Background()
 
-		// Set up test data
 		_, err := client.Set(ctx, &api.SetRequest{
 			Key:   "test_key",
 			Value: []byte("test_value"),
 			Ttl:   durationpb.New(time.Second * 5),
 		})
 		if err != nil {
-			t.Fatalf("failed to set test data: %v", err)
+			t.Fatalf("Setup: Set(): %v", err)
 		}
 
-		// Create cancellable context
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -237,10 +235,8 @@ func TestListErrors(t *testing.T) {
 			t.Fatalf("List() error = %v", err)
 		}
 
-		// Cancel context before receiving
 		cancel()
 
-		// Attempt to receive - should fail with cancelled context
 		_, err = stream.Recv()
 		if status.Code(err) != codes.Canceled {
 			t.Errorf("stream.Recv() after cancel: got code %v, want %v", status.Code(err), codes.Canceled)
@@ -248,20 +244,16 @@ func TestListErrors(t *testing.T) {
 	})
 
 	t.Run("server shutdown during stream", func(t *testing.T) {
-		// Note: This test reuses the parent server which will be cleaned up
-		// This is a limitation but maintains the original logic
 		stream, err := client.List(context.Background(), &emptypb.Empty{})
 		if err != nil {
 			t.Fatalf("List() error = %v", err)
 		}
 
-		// Trigger cleanup in background
 		go func() {
 			time.Sleep(100 * time.Millisecond)
 			cleanup()
 		}()
 
-		// Expect error when server shuts down
 		for {
 			_, err := stream.Recv()
 			if err != nil {

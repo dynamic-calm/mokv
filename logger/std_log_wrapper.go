@@ -13,11 +13,11 @@ type ZerologWriter struct {
 
 // NewZerologWriter returns a ZerologWriter that writes to logger.
 func NewZerologWriter(logger zerolog.Logger) *ZerologWriter {
-	return &ZerologWriter{logger}
+	return &ZerologWriter{logger: logger}
 }
 
 // Write logs p at the level found in its [LEVEL] prefix, defaulting to info.
-func (w *ZerologWriter) Write(p []byte) (n int, err error) {
+func (w *ZerologWriter) Write(p []byte) (int, error) {
 	msg := strings.TrimSpace(string(p))
 
 	switch {

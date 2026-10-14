@@ -23,22 +23,22 @@ import (
 	"context"
 	"time"
 
-	"github.com/dynamic-calm/mokv/mokv"
+	"github.com/dynamic-calm/mokv/client"
 )
 
 func main() {
-	client, _ := mokv.NewClient("addr")
-	defer client.Close()
+	c, _ := client.New("addr")
+	defer c.Close()
 
 	ctx := context.Background()
 
 	key := `59°19'14.7"N`
 	val := []byte(`18°03'39.0"E`)
 
-	client.Set(ctx, key, val, time.Hour)
-	client.Get(ctx, key)
-	client.Delete(ctx, key)
-	client.GetServers(ctx)
+	c.Set(ctx, key, val, time.Hour)
+	c.Get(ctx, key)
+	c.Delete(ctx, key)
+	c.Servers(ctx)
 }
 ```
 

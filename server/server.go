@@ -3,11 +3,12 @@ package server
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"iter"
 	"time"
 
 	"github.com/dynamic-calm/mokv/api"
+	"github.com/dynamic-calm/mokv/kv"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
@@ -16,43 +17,36 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-	status "google.golang.org/grpc/status"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-// Storer is the key-value storage the server reads and writes.
-type Storer interface {
-	Get(key string) ([]byte, error)
-	Set(ctx context.Context, key string, value []byte, expiresAt time.Time) error
-	Delete(ctx context.Context, key string) error
-	List() iter.Seq[[]byte]
-}
-
-// ServerProvider lists the servers in the cluster.
-type ServerProvider interface {
-	GetServers() ([]*api.Server, error)
-}
-
-// KV combines storage and cluster awareness.
+// KV is the key-value store the server exposes.
 type KV interface {
-	Storer
-	ServerProvider
+	Get(key string) ([]byte, error)
+	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
+	Delete(ctx context.Context, key string) error
+	List() iter.Seq[kv.Entry]
+}
+
+// Cluster lists the servers in the cluster.
+type Cluster interface {
+	Servers() ([]kv.Server, error)
 }
 
 type kvServer struct {
-	api.KVServer
-	kv KV
+	api.UnimplementedKVServer
+	svc     KV
+	cluster Cluster
 }
 
-// New creates and configures a new gRPC server instance with logging middleware,
-// health checks, and the registered KV service.
-func New(kv KV, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Server {
+// New returns a gRPC server that serves svc and cluster through the KV API,
+// along with health checks. Requests are logged to logger.
+func New(svc KV, cluster Cluster, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Server {
 	logOpts := []logging.Option{
 		logging.WithLogOnEvents(logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),
 	}
-
-	// Middleware for streaming and unary requests
 	opts = append(opts,
 		grpc.ChainStreamInterceptor(
 			selector.StreamServerInterceptor(
@@ -73,66 +67,75 @@ func New(kv KV, logger zerolog.Logger, opts ...grpc.ServerOption) *grpc.Server {
 	healthSrv.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(s, healthSrv)
 
-	srv := &kvServer{
-		kv: kv,
-	}
-	api.RegisterKVServer(s, srv)
+	api.RegisterKVServer(s, &kvServer{svc: svc, cluster: cluster})
 	return s
 }
 
-// Get retrieves a value for a specific key from the store.
 func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetResponse, error) {
-	value, err := s.kv.Get(req.Key)
+	value, err := s.svc.Get(req.Key)
 	if err != nil {
-		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err()
+		return nil, toStatus(err)
 	}
-	return &api.GetResponse{Value: value, Key: req.Key}, nil
+	return &api.GetResponse{Key: req.Key, Value: value}, nil
 }
 
-// Set stores a key-value pair in the store.
 func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetResponse, error) {
-	if !req.Ttl.IsValid() || req.Ttl.AsDuration() <= 0 {
-		return nil, status.Error(codes.InvalidArgument, "ttl must be a positive duration")
+	if !req.Ttl.IsValid() {
+		return nil, status.Error(codes.InvalidArgument, "ttl must be a valid duration")
 	}
-	expiresAt := time.Now().Add(req.Ttl.AsDuration())
-	if err := s.kv.Set(ctx, req.Key, req.Value, expiresAt); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to set key: %v", err)
+	if err := s.svc.Set(ctx, req.Key, req.Value, req.Ttl.AsDuration()); err != nil {
+		return nil, toStatus(err)
 	}
 	return &api.SetResponse{Ok: true}, nil
 }
 
-// Delete removes a key from the store.
 func (s *kvServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.DeleteResponse, error) {
-	if err := s.kv.Delete(ctx, req.Key); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to delete key: %v", err)
+	if err := s.svc.Delete(ctx, req.Key); err != nil {
+		return nil, toStatus(err)
 	}
 	return &api.DeleteResponse{Ok: true}, nil
 }
 
-// List streams all existing key-value pairs from the store to the client.
 func (s *kvServer) List(req *emptypb.Empty, stream grpc.ServerStreamingServer[api.GetResponse]) error {
-	for value := range s.kv.List() {
+	for e := range s.svc.List() {
 		if err := stream.Context().Err(); err != nil {
-			return err
+			return toStatus(err)
 		}
-		if err := stream.Send(&api.GetResponse{Value: value}); err != nil {
+		if err := stream.Send(&api.GetResponse{Key: e.Key, Value: e.Value}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// GetServers returns the list of nodes in the cluster.
 func (s *kvServer) GetServers(ctx context.Context, req *emptypb.Empty) (*api.GetServersResponse, error) {
-	servers, err := s.kv.GetServers()
+	servers, err := s.cluster.Servers()
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
-	return &api.GetServersResponse{Servers: servers}, nil
+	res := &api.GetServersResponse{Servers: make([]*api.Server, len(servers))}
+	for i, srv := range servers {
+		res.Servers[i] = toServer(srv)
+	}
+	return res, nil
 }
 
-func (s *kvServer) notFoundMsg(key string) string {
-	return fmt.Sprintf("no value for key %q", key)
+func toServer(s kv.Server) *api.Server {
+	return &api.Server{Id: s.ID, RpcAddr: s.Addr, IsLeader: s.IsLeader}
+}
+
+func toStatus(err error) error {
+	switch {
+	case errors.Is(err, kv.ErrNotFound):
+		return status.Error(codes.NotFound, err.Error())
+	case errors.Is(err, kv.ErrInvalidTTL):
+		return status.Error(codes.InvalidArgument, err.Error())
+	case errors.Is(err, kv.ErrNotLeader):
+		return status.Error(codes.Unavailable, err.Error())
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return status.FromContextError(err).Err()
+	}
+	return status.Error(codes.Internal, err.Error())
 }
 
 func interceptorLogger(l zerolog.Logger) logging.Logger {
@@ -141,8 +144,6 @@ func interceptorLogger(l zerolog.Logger) logging.Logger {
 		switch lvl {
 		case logging.LevelDebug:
 			event = l.Debug()
-		case logging.LevelInfo:
-			event = l.Info()
 		case logging.LevelWarn:
 			event = l.Warn()
 		case logging.LevelError:
