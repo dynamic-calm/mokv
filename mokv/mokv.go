@@ -82,7 +82,7 @@ func New(cfg *Config) (_ *Node, err error) {
 	}()
 
 	mux := cmux.New(ln)
-	raftLn := mux.Match(consensus.Match)
+	raftLn := sharedListener{mux.Match(consensus.Match)}
 	grpcLn := mux.Match(cmux.Any())
 
 	store := kv.NewStore()
@@ -168,7 +168,7 @@ func (m *Node) Listen(ctx context.Context) error {
 
 	g.Go(func() error {
 		log.Info().Msg("multiplexer (RAFT, gRPC) listening...")
-		if err := m.cmux.Serve(); err != nil {
+		if err := m.cmux.Serve(); err != nil && !errors.Is(err, net.ErrClosed) {
 			return fmt.Errorf("serving multiplexer: %w", err)
 		}
 		return nil
@@ -209,4 +209,12 @@ func (m *Node) close(ctx context.Context) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+type sharedListener struct {
+	net.Listener
+}
+
+func (sharedListener) Close() error {
+	return nil
 }

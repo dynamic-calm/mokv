@@ -47,6 +47,7 @@ type Config struct {
 
 // Node is a Raft node that applies replicated commands to a kv.Store.
 type Node struct {
+	id   raft.ServerID
 	raft *raft.Raft
 }
 
@@ -58,7 +59,7 @@ func New(store *kv.Store, cfg Config) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Node{raft: r}, nil
+	return &Node{id: raft.ServerID(cfg.ID), raft: r}, nil
 }
 
 // Propose replicates cmds and returns once they are applied on this node.
@@ -180,15 +181,35 @@ func (n *Node) WaitForLeader(timeout time.Duration) error {
 	}
 }
 
-// Close hands leadership over if this node is the leader, then shuts the
-// node down.
+// Close hands leadership over if this node leads other voters, then shuts
+// the node down. The node is shut down even if the handover fails.
 func (n *Node) Close() error {
+	var errs []error
 	if n.IsLeader() {
-		if err := n.raft.LeadershipTransfer().Error(); err != nil {
-			return err
+		if err := n.transferLeadership(); err != nil {
+			errs = append(errs, err)
 		}
 	}
-	return n.raft.Shutdown().Error()
+	if err := n.raft.Shutdown().Error(); err != nil {
+		errs = append(errs, fmt.Errorf("shutting down raft: %w", err))
+	}
+	return errors.Join(errs...)
+}
+
+func (n *Node) transferLeadership() error {
+	future := n.raft.GetConfiguration()
+	if err := future.Error(); err != nil {
+		return fmt.Errorf("getting raft configuration: %w", err)
+	}
+	for _, s := range future.Configuration().Servers {
+		if s.ID != n.id && s.Suffrage == raft.Voter {
+			if err := n.raft.LeadershipTransfer().Error(); err != nil {
+				return fmt.Errorf("transferring leadership: %w", err)
+			}
+			return nil
+		}
+	}
+	return nil
 }
 
 func (n *Node) notLeader() error {

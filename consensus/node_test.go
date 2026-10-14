@@ -113,6 +113,43 @@ func TestReplication(t *testing.T) {
 	}
 }
 
+func TestClose(t *testing.T) {
+	t.Run("single node", func(t *testing.T) {
+		node := newNode(t, "node-1", true)
+		if err := node.WaitForLeader(5 * time.Second); err != nil {
+			t.Fatalf("node.WaitForLeader() = %v, want nil", err)
+		}
+		if err := node.Close(); err != nil {
+			t.Errorf("node.Close() = %v, want nil", err)
+		}
+	})
+
+	t.Run("leader hands over", func(t *testing.T) {
+		node1 := newNode(t, "node-1", true)
+		if err := node1.WaitForLeader(5 * time.Second); err != nil {
+			t.Fatalf("node1.WaitForLeader() = %v, want nil", err)
+		}
+		var followers []*testNode
+		for _, id := range []string{"node-2", "node-3"} {
+			n := newNode(t, id, false)
+			if err := node1.Join(id, n.addr); err != nil {
+				t.Fatalf("node1.Join(%q) = %v, want nil", id, err)
+			}
+			followers = append(followers, n)
+		}
+		waitFor(t, "followers to join", func() bool {
+			servers, err := followers[1].Servers()
+			return err == nil && len(servers) == 3
+		})
+		if err := node1.Close(); err != nil {
+			t.Fatalf("node1.Close() = %v, want nil", err)
+		}
+		waitFor(t, "a follower to lead", func() bool {
+			return followers[0].IsLeader() || followers[1].IsLeader()
+		})
+	})
+}
+
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
