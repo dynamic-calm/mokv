@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"time"
 
 	"github.com/dynamic-calm/mokv/api"
@@ -25,7 +26,7 @@ type Storer interface {
 	Get(key string) ([]byte, error)
 	Set(key string, value []byte, expiresAt time.Time) error
 	Delete(key string) error
-	List() <-chan []byte
+	List() iter.Seq[[]byte]
 }
 
 // ServerProvider defines the interface for gettings the servers
@@ -108,7 +109,7 @@ func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetRespon
 // Delete removes a key from the store.
 func (s *kvServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.DeleteResponse, error) {
 	if err := s.kv.Delete(req.Key); err != nil {
-		return nil, status.New(codes.NotFound, s.notFoundMsg(req.Key)).Err()
+		return nil, status.Errorf(codes.Internal, "failed to delete key: %v", err)
 	}
 	return &api.DeleteResponse{Ok: true}, nil
 }
@@ -116,16 +117,13 @@ func (s *kvServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.Del
 // List streams all existing key-value pairs from the store to the client.
 func (s *kvServer) List(req *emptypb.Empty, stream grpc.ServerStreamingServer[api.GetResponse]) error {
 	for value := range s.kv.List() {
-		select {
-		case <-stream.Context().Done():
-			return stream.Context().Err()
-		default:
-			if err := stream.Send(&api.GetResponse{Value: value}); err != nil {
-				return err
-			}
+		if err := stream.Context().Err(); err != nil {
+			return err
+		}
+		if err := stream.Send(&api.GetResponse{Value: value}); err != nil {
+			return err
 		}
 	}
-
 	return nil
 }
 

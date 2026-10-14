@@ -36,16 +36,17 @@ type Resolver struct {
 }
 
 func init() {
-	resolver.Register(&Resolver{})
-	log.Info().Msg("registered mokv resolver")
+	resolver.Register(&resolverBuilder{})
 }
 
-var _ resolver.Builder = (*Resolver)(nil)
+type resolverBuilder struct{}
+
+var _ resolver.Builder = (*resolverBuilder)(nil)
 
 // Build creates a new resolver for the given target.
 // It establishes a connection to the seed address provided in the
 // target to fetch initial members.
-func (r *Resolver) Build(
+func (b *resolverBuilder) Build(
 	target resolver.Target,
 	cc resolver.ClientConn,
 	opts resolver.BuildOptions,
@@ -54,7 +55,7 @@ func (r *Resolver) Build(
 		Str("target", target.URL.Host).
 		Msg("building resolver")
 
-	r.clientConn = cc
+	r := &Resolver{clientConn: cc, done: make(chan struct{})}
 	var dialOpts []grpc.DialOption
 	if opts.DialCreds != nil {
 		dialOpts = append(
@@ -71,8 +72,6 @@ func (r *Resolver) Build(
 		return nil, err
 	}
 	r.ResolveNow(resolver.ResolveNowOptions{})
-
-	r.done = make(chan struct{})
 	go r.periodicResolve()
 
 	return r, nil
@@ -92,7 +91,7 @@ func (r *Resolver) periodicResolve() {
 	}
 }
 
-func (r *Resolver) Scheme() string {
+func (b *resolverBuilder) Scheme() string {
 	return Name
 }
 

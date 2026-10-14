@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"net"
 	"net/http"
 	"os/signal"
@@ -46,7 +47,7 @@ type Storer interface {
 	Get(key string) ([]byte, error)
 	Set(key string, value []byte, expiresAt time.Time) error
 	Delete(key string) error
-	List() <-chan []byte
+	List() iter.Seq[[]byte]
 	Close() error
 }
 

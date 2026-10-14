@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"net"
 	"os"
 	"path/filepath"
@@ -86,7 +87,7 @@ type Storer interface {
 	DeleteExpired(key string, expiresAt time.Time) error
 	Expired(now time.Time) map[string]time.Time
 	Range(fn func(key string, value []byte, expiresAt time.Time) bool)
-	List() <-chan []byte
+	List() iter.Seq[[]byte]
 }
 
 // KV is a distributed key-value store implementation using Raft consensus.
@@ -185,8 +186,8 @@ func (kv *KV) Delete(key string) error {
 	return nil
 }
 
-// List returns a channel that streams all values from the local store.
-func (kv *KV) List() <-chan []byte {
+// List returns an iterator over all unexpired values in the local store.
+func (kv *KV) List() iter.Seq[[]byte] {
 	return kv.store.List()
 }
 
@@ -469,6 +470,9 @@ var _ raft.FSM = (*fsm)(nil)
 // Apply applies a Raft log entry to the local KV store.
 // This will get called on every node in the cluster
 func (fsm *fsm) Apply(log *raft.Log) any {
+	if len(log.Data) == 0 {
+		return errors.New("empty log entry")
+	}
 	reqType := RequestType(log.Data[0])
 	data := log.Data[1:]
 	var expiresAt time.Time
@@ -625,11 +629,11 @@ func (s *StreamLayer) Dial(
 		return nil, err
 	}
 	// Identify to mux this is a raft RPC
-	_, err = conn.Write([]byte{byte(RaftRPC)})
-	if err != nil {
+	if _, err := conn.Write([]byte{byte(RaftRPC)}); err != nil {
+		conn.Close()
 		return nil, err
 	}
-	return conn, err
+	return conn, nil
 }
 
 // Accept accepts a new incoming connection.

@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"iter"
 	"sync"
 	"time"
 )
@@ -101,23 +102,18 @@ func (s *Store) Range(fn func(key string, value []byte, expiresAt time.Time) boo
 	})
 }
 
-// List returns a channel that streams all unexpired values currently in the store.
-// The channel is closed once iteration is complete.
-func (s *Store) List() <-chan []byte {
-	c := make(chan []byte)
-	go func() {
-		defer close(c)
+// List returns an iterator over all unexpired values currently in the store.
+func (s *Store) List() iter.Seq[[]byte] {
+	return func(yield func([]byte) bool) {
 		now := time.Now()
-		s.m.Range(func(key any, val any) bool {
+		s.m.Range(func(_, val any) bool {
 			e, ok := val.(*entry)
 			if !ok || e.expired(now) {
 				return true
 			}
-			c <- e.value
-			return true
+			return yield(e.value)
 		})
-	}()
-	return c
+	}
 }
 
 func (s *Store) load(key string) (*entry, error) {
