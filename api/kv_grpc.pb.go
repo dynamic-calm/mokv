@@ -30,11 +30,18 @@ const (
 // KVClient is the client API for KV service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// KV is the key-value store service.
 type KVClient interface {
+	// Get retrieves the value associated with a given key.
 	Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error)
+	// Set stores a key-value pair.
 	Set(ctx context.Context, in *SetRequest, opts ...grpc.CallOption) (*SetResponse, error)
+	// Delete removes a key-value pair.
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
+	// List streams all key-value pairs.
 	List(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetResponse], error)
+	// GetServers returns the list of servers in the cluster.
 	GetServers(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetServersResponse, error)
 }
 
@@ -108,11 +115,18 @@ func (c *kVClient) GetServers(ctx context.Context, in *emptypb.Empty, opts ...gr
 // KVServer is the server API for KV service.
 // All implementations must embed UnimplementedKVServer
 // for forward compatibility.
+//
+// KV is the key-value store service.
 type KVServer interface {
+	// Get retrieves the value associated with a given key.
 	Get(context.Context, *GetRequest) (*GetResponse, error)
+	// Set stores a key-value pair.
 	Set(context.Context, *SetRequest) (*SetResponse, error)
+	// Delete removes a key-value pair.
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
+	// List streams all key-value pairs.
 	List(*emptypb.Empty, grpc.ServerStreamingServer[GetResponse]) error
+	// GetServers returns the list of servers in the cluster.
 	GetServers(context.Context, *emptypb.Empty) (*GetServersResponse, error)
 	mustEmbedUnimplementedKVServer()
 }

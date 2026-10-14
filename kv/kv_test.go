@@ -82,7 +82,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	}
 
 	// Write data to node 1
-	err = node1.Set("test-key", []byte("test-value"))
+	err = node1.Set("test-key", []byte("test-value"), time.Time{})
 	if err != nil {
 		t.Fatalf("failed to write to node 1: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	}
 
 	// Write data to node 1
-	err = node1.Set("test-key2", []byte("test-value2"))
+	err = node1.Set("test-key2", []byte("test-value2"), time.Time{})
 	if err != nil {
 		t.Fatalf("failed to write to node 1: %v", err)
 	}
@@ -181,6 +181,22 @@ func TestDistributedKVReplication(t *testing.T) {
 	}
 	if string(value) != "test-value2" {
 		t.Errorf("replication failed: got %s, want test-value2", string(value))
+	}
+
+	// Write an expiring key and check the leader removes it on every node
+	err = node1.Set("ttl-key", []byte("ttl-value"), time.Now().Add(2*time.Second))
+	if err != nil {
+		t.Fatalf("failed to write expiring key to node 1: %v", err)
+	}
+	time.Sleep(1 * time.Second)
+	if _, err := node3.Get("ttl-key"); err != nil {
+		t.Fatalf("expiring key should be readable before it expires: %v", err)
+	}
+	time.Sleep(1*time.Second + 2*kv.ExpireInterval)
+	for name, st := range map[string]*store.Store{"node1": store1, "node3": store3} {
+		if expired := st.Expired(time.Now()); len(expired) != 0 {
+			t.Errorf("%s still holds expired keys: %v", name, expired)
+		}
 	}
 
 	// Read from node2. Since it left no data should be replicated.

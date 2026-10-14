@@ -7,12 +7,14 @@ import (
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/dynamic-calm/mokv/api"
 	"github.com/dynamic-calm/mokv/discovery"
 	"github.com/dynamic-calm/mokv/mokv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -60,7 +62,7 @@ func TestRunE2E(t *testing.T) {
 
 	// Test Set operation
 	value := []byte("test")
-	_, err = client.Set(ctx, &api.SetRequest{Key: "test", Value: value})
+	_, err = client.Set(ctx, &api.SetRequest{Key: "test", Value: value, Ttl: durationpb.New(time.Second * 5)})
 	if err != nil {
 		t.Fatalf("failed to set: %s", err)
 	}

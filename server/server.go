@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/dynamic-calm/mokv/api"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
@@ -21,7 +23,7 @@ import (
 // Storer defines the interface for a the key-value storage.
 type Storer interface {
 	Get(key string) ([]byte, error)
-	Set(key string, value []byte) error
+	Set(key string, value []byte, expiresAt time.Time) error
 	Delete(key string) error
 	List() <-chan []byte
 }
@@ -90,7 +92,13 @@ func (s *kvServer) Get(ctx context.Context, req *api.GetRequest) (*api.GetRespon
 
 // Set stores a key-value pair in the store.
 func (s *kvServer) Set(ctx context.Context, req *api.SetRequest) (*api.SetResponse, error) {
-	if err := s.kv.Set(req.Key, req.Value); err != nil {
+	if !req.Ttl.IsValid() || req.Ttl.AsDuration() <= 0 {
+		err := errors.New("ttl must be a positive duration")
+		log.Error().Err(err).Str("key", req.Key).Msg("set operation failed")
+		return &api.SetResponse{Ok: false}, status.Errorf(codes.InvalidArgument, "failed to set key: %v", err)
+	}
+	expiresAt := time.Now().Add(req.Ttl.AsDuration())
+	if err := s.kv.Set(req.Key, req.Value, expiresAt); err != nil {
 		log.Error().Err(err).Str("key", req.Key).Msg("set operation failed")
 		return &api.SetResponse{Ok: false}, status.Errorf(codes.Internal, "failed to set key: %v", err)
 	}

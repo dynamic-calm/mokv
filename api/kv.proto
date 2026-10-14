@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "google/protobuf/empty.proto";
+import "google/protobuf/duration.proto";
 
 package api;
 
@@ -26,6 +27,8 @@ message SetRequest {
     string key = 1;
     // value is the value to associate with the key.
     bytes value = 2;
+    // ttl is how long the entry lives after the write is accepted.
+    google.protobuf.Duration ttl = 3;
 }
 
 // SetResponse is the response message for the Set RPC.

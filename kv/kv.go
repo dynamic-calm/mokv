@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/dynamic-calm/mokv/api"
@@ -30,6 +31,9 @@ const (
 	// RaftTimeout defines the generic timeout for Raft operations.
 	RaftTimeout = 10 * time.Second
 
+	// ExpireInterval defines how often the leader looks for expired keys.
+	ExpireInterval = time.Second
+
 	lenWidth = 8
 )
 
@@ -44,6 +48,12 @@ type RequestType uint8
 const (
 	RequestTypeSet RequestType = iota
 	RequestTypeDelete
+	// RequestTypeSetWithExpiry is a set whose entry carries an absolute
+	// expiration deadline, so every node expires it at the same time.
+	RequestTypeSetWithExpiry
+	// RequestTypeExpire deletes a key only if its deadline still matches,
+	// so a key overwritten after it was found expired survives.
+	RequestTypeExpire
 )
 
 type BatchOperation struct {
@@ -71,8 +81,11 @@ type KVConfig struct {
 // Storer defines the interface for a the key-value storage.
 type Storer interface {
 	Get(key string) ([]byte, error)
-	Set(key string, value []byte) error
+	Set(key string, value []byte, expiresAt time.Time) error
 	Delete(key string) error
+	DeleteExpired(key string, expiresAt time.Time) error
+	Expired(now time.Time) map[string]time.Time
+	Range(fn func(key string, value []byte, expiresAt time.Time) bool)
 	List() <-chan []byte
 }
 
@@ -81,6 +94,8 @@ type KV struct {
 	cfg   *KVConfig
 	store Storer
 	raft  *raft.Raft
+	done  chan struct{}
+	wg    sync.WaitGroup
 }
 
 // New creates and initializes a new distributed KV.
@@ -88,12 +103,58 @@ func New(store Storer, cfg *KVConfig) (*KV, error) {
 	kv := &KV{
 		cfg:   cfg,
 		store: store,
+		done:  make(chan struct{}),
 	}
 	if err := kv.setupRaft(kv.cfg.DataDir); err != nil {
 		log.Error().Err(err).Msg("failed setting up raft")
 		return nil, err
 	}
+
+	kv.wg.Go(kv.expireLoop)
 	return kv, nil
+}
+
+// expireLoop periodically removes expired keys until the KV is closed.
+// Only the leader proposes the deletes; followers apply them through Raft.
+func (kv *KV) expireLoop() {
+	ticker := time.NewTicker(ExpireInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-kv.done:
+			return
+		case <-ticker.C:
+			if kv.isLeader() {
+				kv.expire(time.Now())
+			}
+		}
+	}
+}
+
+// expire replicates a delete for every key that has expired as of now.
+func (kv *KV) expire(now time.Time) {
+	expired := kv.store.Expired(now)
+	if len(expired) == 0 {
+		return
+	}
+
+	// Submit all deletes before waiting so Raft can batch them.
+	futures := make(map[string]raft.ApplyFuture, len(expired))
+	for key, expiresAt := range expired {
+		b, err := encodeRequest(RequestTypeExpire, &api.DeleteRequest{Key: key}, expiresAt)
+		if err != nil {
+			log.Error().Err(err).Str("key", key).Msg("failed to encode expire request")
+			continue
+		}
+		futures[key] = kv.raft.Apply(b, RaftTimeout)
+	}
+
+	for key, future := range futures {
+		if err := future.Error(); err != nil {
+			log.Error().Err(err).Str("key", key).Msg("failed to expire key")
+		}
+	}
+	log.Debug().Int("count", len(futures)).Msg("expired keys")
 }
 
 // Get retrieves a value from the local store.
@@ -102,8 +163,9 @@ func (kv *KV) Get(key string) ([]byte, error) {
 }
 
 // Set applies a set operation to the distributed store via Raft.
-func (kv *KV) Set(key string, value []byte) error {
-	_, err := kv.apply(RequestTypeSet, &api.SetRequest{Key: key, Value: value})
+// The entry expires at expiresAt; a zero expiresAt means it never expires.
+func (kv *KV) Set(key string, value []byte, expiresAt time.Time) error {
+	_, err := kv.apply(RequestTypeSetWithExpiry, &api.SetRequest{Key: key, Value: value}, expiresAt)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to apply replication setting key: %s, val: %s, from kv: %w",
@@ -116,7 +178,7 @@ func (kv *KV) Set(key string, value []byte) error {
 // Delete applies a delete operation to the distributed store via Raft.
 func (kv *KV) Delete(key string) error {
 	// Replicate Delete
-	_, err := kv.apply(RequestTypeDelete, &api.DeleteRequest{Key: key})
+	_, err := kv.apply(RequestTypeDelete, &api.DeleteRequest{Key: key}, time.Time{})
 	if err != nil {
 		return fmt.Errorf("failed to apply replication deleting key: %s from kv: %w", key, err)
 	}
@@ -210,6 +272,9 @@ func (kv *KV) Leave(id string) error {
 
 // Close gracefully shuts down the Raft node.
 func (kv *KV) Close() error {
+	close(kv.done)
+	kv.wg.Wait()
+
 	if kv.isLeader() {
 		future := kv.raft.LeadershipTransfer()
 		if err := future.Error(); err != nil {
@@ -241,25 +306,14 @@ func (kv *KV) isLeader() bool {
 }
 
 // apply encodes the request and submits it to Raft.
-func (kv *KV) apply(reqType RequestType, req proto.Message) (any, error) {
-	var buf bytes.Buffer
-	// Write the reqType byte to the buffer to differentiate from other requests
-	// later on
-	if _, err := buf.Write([]byte{byte(reqType)}); err != nil {
-		return nil, err
-	}
-
-	b, err := proto.Marshal(req)
+// expiresAt is only encoded for request types that carry an expiry.
+func (kv *KV) apply(reqType RequestType, req proto.Message, expiresAt time.Time) (any, error) {
+	b, err := encodeRequest(reqType, req, expiresAt)
 	if err != nil {
 		return nil, err
 	}
 
-	// Add the actual request after that first byte
-	if _, err := buf.Write(b); err != nil {
-		return nil, err
-	}
-
-	future := kv.raft.Apply(buf.Bytes(), RaftTimeout)
+	future := kv.raft.Apply(b, RaftTimeout)
 	if err := future.Error(); err != nil {
 		return nil, err
 	}
@@ -270,6 +324,46 @@ func (kv *KV) apply(reqType RequestType, req proto.Message) (any, error) {
 	}
 
 	return res, nil
+}
+
+// encodeRequest builds a Raft log entry: the reqType byte to differentiate
+// requests later on, the expiry deadline for types that carry one, and then
+// the actual request.
+func encodeRequest(reqType RequestType, req proto.Message, expiresAt time.Time) ([]byte, error) {
+	buf := []byte{byte(reqType)}
+	if hasExpiry(reqType) {
+		buf = binary.BigEndian.AppendUint64(buf, uint64(unixNano(expiresAt)))
+	}
+
+	b, err := proto.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	return append(buf, b...), nil
+}
+
+// decodeExpiry splits the expiry deadline from the rest of the entry.
+func decodeExpiry(b []byte) (time.Time, []byte, error) {
+	if len(b) < lenWidth {
+		return time.Time{}, nil, errors.New("log entry too short for expiry")
+	}
+	n := int64(binary.BigEndian.Uint64(b[:lenWidth]))
+	if n == 0 {
+		return time.Time{}, b[lenWidth:], nil
+	}
+	return time.Unix(0, n), b[lenWidth:], nil
+}
+
+func hasExpiry(reqType RequestType) bool {
+	return reqType == RequestTypeSetWithExpiry || reqType == RequestTypeExpire
+}
+
+// unixNano encodes a zero time as 0, meaning no expiry.
+func unixNano(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.UnixNano()
 }
 
 func (kv *KV) setupRaft(dataDir string) error {
@@ -376,23 +470,34 @@ var _ raft.FSM = (*fsm)(nil)
 // This will get called on every node in the cluster
 func (fsm *fsm) Apply(log *raft.Log) any {
 	reqType := RequestType(log.Data[0])
+	data := log.Data[1:]
+	var expiresAt time.Time
+	if hasExpiry(reqType) {
+		var err error
+		if expiresAt, data, err = decodeExpiry(data); err != nil {
+			return err
+		}
+	}
+
 	switch reqType {
-	case RequestTypeSet:
-		return fsm.applySet(log.Data[1:])
+	case RequestTypeSet, RequestTypeSetWithExpiry:
+		return fsm.applySet(data, expiresAt)
 	case RequestTypeDelete:
-		return fsm.applyDelete(log.Data[1:])
+		return fsm.applyDelete(data)
+	case RequestTypeExpire:
+		return fsm.applyExpire(data, expiresAt)
 	}
 	return nil
 }
 
-func (fsm *fsm) applySet(b []byte) any {
+func (fsm *fsm) applySet(b []byte, expiresAt time.Time) any {
 	var req api.SetRequest
 	err := proto.Unmarshal(b, &req)
 	if err != nil {
 		return err
 	}
 
-	err = fsm.kv.Set(req.Key, req.Value)
+	err = fsm.kv.Set(req.Key, req.Value, expiresAt)
 	if err != nil {
 		return err
 	}
@@ -412,20 +517,50 @@ func (fsm *fsm) applyDelete(b []byte) any {
 	return &api.DeleteResponse{Ok: true}
 }
 
+func (fsm *fsm) applyExpire(b []byte, expiresAt time.Time) any {
+	var req api.DeleteRequest
+	err := proto.Unmarshal(b, &req)
+	if err != nil {
+		return err
+	}
+	err = fsm.kv.DeleteExpired(req.Key, expiresAt)
+	if err != nil {
+		return err
+	}
+	return &api.DeleteResponse{Ok: true}
+}
+
 // Snapshot creates a snapshot of the current state of the store.
+// Each entry is written as a length-prefixed set log entry, so Restore can
+// replay it through Apply with its expiry intact. Expired entries are kept so
+// the snapshot matches the replicated state exactly.
 func (fsm *fsm) Snapshot() (raft.FSMSnapshot, error) {
-	r := chanToReader(fsm.kv.List())
-	return &snapshot{reader: r}, nil
+	var buf bytes.Buffer
+	var err error
+	fsm.kv.Range(func(key string, value []byte, expiresAt time.Time) bool {
+		var b []byte
+		b, err = encodeRequest(RequestTypeSetWithExpiry, &api.SetRequest{Key: key, Value: value}, expiresAt)
+		if err != nil {
+			return false
+		}
+		buf.Write(binary.BigEndian.AppendUint64(nil, uint64(len(b))))
+		buf.Write(b)
+		return true
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode snapshot entry: %w", err)
+	}
+	return &snapshot{data: buf.Bytes()}, nil
 }
 
 var _ raft.FSMSnapshot = (*snapshot)(nil)
 
 type snapshot struct {
-	reader io.Reader
+	data []byte
 }
 
 func (s *snapshot) Persist(sink raft.SnapshotSink) error {
-	if _, err := io.Copy(sink, s.reader); err != nil {
+	if _, err := sink.Write(s.data); err != nil {
 		_ = sink.Cancel()
 		return err
 	}
@@ -434,27 +569,31 @@ func (s *snapshot) Persist(sink raft.SnapshotSink) error {
 
 func (s *snapshot) Release() {}
 
-// Restore restores the store state from a snapshot.
+// Restore replaces the store state with the one in the snapshot.
 func (fsm *fsm) Restore(r io.ReadCloser) error {
+	defer r.Close()
+
+	// Discard the previous state, as required by raft.FSM.
+	fsm.kv.Range(func(key string, _ []byte, _ time.Time) bool {
+		_ = fsm.kv.Delete(key)
+		return true
+	})
+
 	b := make([]byte, lenWidth)
-	var buf bytes.Buffer
-	for i := 0; ; i++ {
+	for {
 		_, err := io.ReadFull(r, b)
 		if err == io.EOF {
 			break
 		} else if err != nil {
 			return err
 		}
-		size := int64(binary.BigEndian.Uint64(b))
-		if _, err = io.CopyN(&buf, r, size); err != nil {
+		entry := make([]byte, binary.BigEndian.Uint64(b))
+		if _, err = io.ReadFull(r, entry); err != nil {
 			return err
 		}
-		element := &api.GetResponse{}
-		if err = proto.Unmarshal(buf.Bytes(), element); err != nil {
+		if err, ok := fsm.Apply(&raft.Log{Data: entry}).(error); ok {
 			return err
 		}
-		fsm.kv.Set(element.Key, element.Value)
-		buf.Reset()
 	}
 	return nil
 }
@@ -523,15 +662,4 @@ func (s *StreamLayer) Close() error {
 // Addr returns the listener's network address.
 func (s *StreamLayer) Addr() net.Addr {
 	return s.ln.Addr()
-}
-
-func chanToReader(ch <-chan []byte) io.Reader {
-	r, w := io.Pipe()
-	go func() {
-		defer w.Close()
-		for data := range ch {
-			w.Write(data)
-		}
-	}()
-	return r
 }

@@ -44,7 +44,7 @@ type Config struct {
 // Storer defines the interface for a the key-value storage.
 type Storer interface {
 	Get(key string) ([]byte, error)
-	Set(key string, value []byte) error
+	Set(key string, value []byte, expiresAt time.Time) error
 	Delete(key string) error
 	List() <-chan []byte
 	Close() error

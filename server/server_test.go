@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	status "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -82,11 +83,11 @@ func TestAPI(t *testing.T) {
 	client, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	t.Run("set and get value", func(t *testing.T) {
 		expected := []byte("test_value")
-		setReq := &api.SetRequest{Key: "test_key", Value: expected}
+		setReq := &api.SetRequest{Key: "test_key", Value: expected, Ttl: durationpb.New(time.Second * 5)}
 
 		setRes, err := client.Set(ctx, setReq)
 		if err != nil {
@@ -113,6 +114,31 @@ func TestAPI(t *testing.T) {
 			t.Error("Get() with non-existent key: expected error, got nil")
 		}
 	})
+
+	t.Run("fails on invalid ttl", func(t *testing.T) {
+		setReq := &api.SetRequest{
+			Key:   "test_key",
+			Value: []byte("test_value"),
+		}
+		_, err := client.Set(ctx, setReq)
+		if err == nil {
+			t.Error("Set() with no ttl: expected error, got nil")
+		}
+	})
+
+	t.Run("fails on non-positive ttl", func(t *testing.T) {
+		for _, ttl := range []time.Duration{0, -time.Second} {
+			setReq := &api.SetRequest{
+				Key:   "test_key",
+				Value: []byte("test_value"),
+				Ttl:   durationpb.New(ttl),
+			}
+			_, err := client.Set(ctx, setReq)
+			if status.Code(err) != codes.InvalidArgument {
+				t.Errorf("Set() with ttl %v: got %v, want InvalidArgument", ttl, err)
+			}
+		}
+	})
 }
 
 func TestStream(t *testing.T) {
@@ -131,7 +157,7 @@ func TestStream(t *testing.T) {
 
 	// Populate test data
 	for k, v := range testData {
-		_, err := client.Set(ctx, &api.SetRequest{Key: k, Value: v})
+		_, err := client.Set(ctx, &api.SetRequest{Key: k, Value: v, Ttl: durationpb.New(time.Second * 5)})
 		if err != nil {
 			t.Fatalf("failed to set test data: %v", err)
 		}
@@ -188,6 +214,7 @@ func TestListErrors(t *testing.T) {
 		_, err := client.Set(ctx, &api.SetRequest{
 			Key:   "test_key",
 			Value: []byte("test_value"),
+			Ttl:   durationpb.New(time.Second * 5),
 		})
 		if err != nil {
 			t.Fatalf("failed to set test data: %v", err)
@@ -261,6 +288,7 @@ func TestConcurrency(t *testing.T) {
 				setReq := &api.SetRequest{
 					Key:   "test_key" + strconv.Itoa(i),
 					Value: expected,
+					Ttl:   durationpb.New(time.Second * 5),
 				}
 				setRes, err := client.Set(ctx, setReq)
 				if err != nil {
