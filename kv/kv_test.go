@@ -82,7 +82,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	}
 
 	// Write data to node 1
-	err = node1.Set("test-key", []byte("test-value"), time.Time{})
+	err = node1.Set(t.Context(), "test-key", []byte("test-value"), time.Time{})
 	if err != nil {
 		t.Fatalf("failed to write to node 1: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	}
 
 	// Write data to node 1
-	err = node1.Set("test-key2", []byte("test-value2"), time.Time{})
+	err = node1.Set(t.Context(), "test-key2", []byte("test-value2"), time.Time{})
 	if err != nil {
 		t.Fatalf("failed to write to node 1: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	}
 
 	// Write an expiring key and check the leader removes it on every node
-	err = node1.Set("ttl-key", []byte("ttl-value"), time.Now().Add(2*time.Second))
+	err = node1.Set(t.Context(), "ttl-key", []byte("ttl-value"), time.Now().Add(2*time.Second))
 	if err != nil {
 		t.Fatalf("failed to write expiring key to node 1: %v", err)
 	}

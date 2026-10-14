@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -64,7 +65,7 @@ func (c *CLI) setupConfig(cmd *cobra.Command, args []string) error {
 	if configFile != "" {
 		viper.SetConfigFile(configFile)
 		if err := viper.ReadInConfig(); err != nil {
-			if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			if !errors.As(err, &viper.ConfigFileNotFoundError{}) {
 				return err
 			}
 		}
