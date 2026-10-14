@@ -30,6 +30,7 @@ type Membership struct {
 	serf    *serf.Serf
 	handler Handler
 	events  chan serf.Event
+	done    chan struct{}
 }
 
 // NewMembership creates a new Membership instance, initializes Serf, and joins the cluster if seed addresses are provided.
@@ -47,9 +48,14 @@ func (m *Membership) Members() []serf.Member {
 	return m.serf.Members()
 }
 
-// Leave gracefully causes the local node to leave the Serf cluster.
+// Leave gracefully causes the local node to leave the Serf cluster and
+// shuts down Serf.
 func (m *Membership) Leave() error {
-	return m.serf.Leave()
+	defer close(m.done)
+	if err := m.serf.Leave(); err != nil {
+		return err
+	}
+	return m.serf.Shutdown()
 }
 
 func (m *Membership) isLocal(member serf.Member) bool {
@@ -80,6 +86,7 @@ func (m *Membership) setupSerf() error {
 	config.MemberlistConfig = mlConfig
 
 	m.events = make(chan serf.Event)
+	m.done = make(chan struct{})
 	config.EventCh = m.events
 	config.Tags = m.Tags
 	config.NodeName = m.MembershipConfig.NodeName
@@ -89,10 +96,7 @@ func (m *Membership) setupSerf() error {
 		return err
 	}
 
-	go func() {
-		defer close(m.events)
-		m.eventHandler()
-	}()
+	go m.eventHandler()
 
 	if m.StartJoinAddrs != nil {
 		_, err = m.serf.Join(m.StartJoinAddrs, true)
@@ -105,7 +109,13 @@ func (m *Membership) setupSerf() error {
 }
 
 func (m *Membership) eventHandler() {
-	for e := range m.events {
+	for {
+		var e serf.Event
+		select {
+		case <-m.done:
+			return
+		case e = <-m.events:
+		}
 		switch e.EventType() {
 		case serf.EventMemberJoin:
 			for _, member := range e.(serf.MemberEvent).Members {

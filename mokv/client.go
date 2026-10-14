@@ -58,7 +58,10 @@ func (c *Client) Set(ctx context.Context, key string, value []byte, ttl time.Dur
 // Delete removes a key from the cluster.
 func (c *Client) Delete(ctx context.Context, key string) (bool, error) {
 	res, err := c.api.Delete(ctx, &api.DeleteRequest{Key: key})
-	return res.Ok, err
+	if err != nil {
+		return false, err
+	}
+	return res.Ok, nil
 }
 
 // GetServers returns all nodes in the cluster.
