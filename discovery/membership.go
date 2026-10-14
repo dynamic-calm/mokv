@@ -1,3 +1,5 @@
+// Package discovery handles cluster membership with Serf and client-side
+// routing with a gRPC resolver and balancer.
 package discovery
 
 import (
@@ -11,12 +13,13 @@ import (
 	"github.com/hashicorp/serf/serf"
 )
 
+// Handler is notified when members join or leave the cluster.
 type Handler interface {
 	Join(name, addr string) error
 	Leave(name string) error
 }
 
-// Config holds the configuration for the Serf-based discovery mechanism.
+// MembershipConfig holds the configuration for the Serf-based discovery mechanism.
 type MembershipConfig struct {
 	NodeName       string
 	BindAddr       string
@@ -33,7 +36,8 @@ type Membership struct {
 	done    chan struct{}
 }
 
-// NewMembership creates a new Membership instance, initializes Serf, and joins the cluster if seed addresses are provided.
+// NewMembership creates a Membership, starts Serf, and joins the cluster
+// if seed addresses are provided.
 func NewMembership(h Handler, cfg MembershipConfig) (*Membership, error) {
 	m := &Membership{handler: h, MembershipConfig: cfg}
 	if err := m.setupSerf(); err != nil {

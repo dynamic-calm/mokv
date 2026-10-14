@@ -1,3 +1,4 @@
+// Package mokv runs a mokv node and provides a client for it.
 package mokv
 
 import (
@@ -161,6 +162,8 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 	}, nil
 }
 
+// Listen serves gRPC, Raft and metrics until ctx is done or a signal is
+// received, then shuts the node down.
 func (m *MOKV) Listen(ctx context.Context) error {
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()

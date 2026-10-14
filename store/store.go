@@ -1,3 +1,4 @@
+// Package store implements an in-memory key-value store with expiry.
 package store
 
 import (
@@ -8,8 +9,10 @@ import (
 )
 
 var (
+	// ErrNotFound is returned when a key does not exist or has expired.
 	ErrNotFound = errors.New("item not found")
-	ErrNotBytes = errors.New("value is not of type []byte")
+	// ErrInvalidEntry is returned when a stored value has an unexpected type.
+	ErrInvalidEntry = errors.New("invalid entry type")
 )
 
 // entry is a stored value with its expiration deadline.
@@ -23,7 +26,7 @@ func (e *entry) expired(now time.Time) bool {
 	return !e.expiresAt.IsZero() && !now.Before(e.expiresAt)
 }
 
-// Store is a concurrent, in-memory implementation of Storer using a sync.Map.
+// Store is a concurrent, in-memory key-value store backed by a sync.Map.
 type Store struct {
 	m sync.Map
 }
@@ -123,7 +126,7 @@ func (s *Store) load(key string) (*entry, error) {
 	}
 	e, ok := val.(*entry)
 	if !ok {
-		return nil, ErrNotBytes
+		return nil, ErrInvalidEntry
 	}
 	return e, nil
 }
