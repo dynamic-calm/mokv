@@ -27,6 +27,7 @@ const (
 	reResolveInterval = 2 * time.Second
 )
 
+// Resolver resolves the mokv scheme to the cluster servers, marking the leader.
 type Resolver struct {
 	mu            sync.Mutex
 	clientConn    resolver.ClientConn
@@ -91,6 +92,7 @@ func (r *Resolver) periodicResolve() {
 	}
 }
 
+// Scheme returns the URL scheme handled by the resolver.
 func (b *resolverBuilder) Scheme() string {
 	return Scheme
 }

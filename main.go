@@ -1,3 +1,4 @@
+// Command mokv runs a mokv node.
 package main
 
 import (
@@ -83,7 +84,7 @@ func (c *CLI) setupConfig(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// Run executes the main application logic, starting mokv service.
+// run executes the main application logic, starting the mokv service.
 func (c *CLI) run(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	service, err := mokv.New(c.config, os.Getenv)

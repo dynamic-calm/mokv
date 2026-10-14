@@ -1,3 +1,4 @@
+// Package server implements the mokv gRPC service.
 package server
 
 import (
@@ -19,7 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-// Storer defines the interface for a the key-value storage.
+// Storer is the key-value storage the server reads and writes.
 type Storer interface {
 	Get(key string) ([]byte, error)
 	Set(ctx context.Context, key string, value []byte, expiresAt time.Time) error
@@ -27,8 +28,7 @@ type Storer interface {
 	List() iter.Seq[[]byte]
 }
 
-// ServerProvider defines the interface for gettings the servers
-// in the cluster.
+// ServerProvider lists the servers in the cluster.
 type ServerProvider interface {
 	GetServers() ([]*api.Server, error)
 }

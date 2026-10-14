@@ -1,3 +1,4 @@
+// Command test_kv runs a few requests against a mokv node.
 package main
 
 import (

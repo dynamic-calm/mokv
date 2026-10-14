@@ -1,3 +1,4 @@
+// Package kv implements a key-value store replicated with Raft.
 package kv
 
 import (
@@ -40,15 +41,19 @@ const (
 )
 
 var (
+	// ErrLeaderTimeout is returned when no leader is elected in time.
 	ErrLeaderTimeout = errors.New("timed out waiting for leader")
-	ErrNotRaftRPC    = errors.New("not a raft rpc connection")
+	// ErrNotRaftRPC is returned when a connection does not start with RaftRPC.
+	ErrNotRaftRPC = errors.New("not a raft rpc connection")
 )
 
 // RequestType identifies the type of operation being applied to the Raft log.
 type RequestType uint8
 
 const (
+	// RequestTypeSet is a set without expiry, kept for old log entries.
 	RequestTypeSet RequestType = iota
+	// RequestTypeDelete deletes a key.
 	RequestTypeDelete
 	// RequestTypeSetWithExpiry is a set whose entry carries an absolute
 	// expiration deadline, so every node expires it at the same time.
@@ -73,7 +78,7 @@ type Config struct {
 	DataDir string
 }
 
-// Storer defines the interface for a the key-value storage.
+// Storer is the local storage the Raft FSM applies entries to.
 type Storer interface {
 	Get(key string) ([]byte, error)
 	Set(key string, value []byte, expiresAt time.Time) error
@@ -291,6 +296,7 @@ func (kv *KV) WaitForLeader(timeout time.Duration) error {
 		}
 	}
 }
+
 func (kv *KV) isLeader() bool {
 	return kv.raft.State() == raft.Leader
 }
@@ -460,11 +466,10 @@ type fsm struct {
 	store Storer
 }
 
-// Finite State Machine
 var _ raft.FSM = (*fsm)(nil)
 
 // Apply applies a Raft log entry to the local KV store.
-// This will get called on every node in the cluster
+// It is called on every node in the cluster.
 func (f *fsm) Apply(l *raft.Log) any {
 	if len(l.Data) == 0 {
 		return errors.New("empty log entry")
@@ -598,7 +603,6 @@ func (f *fsm) Restore(r io.ReadCloser) error {
 	return nil
 }
 
-// Stream layer
 var _ raft.StreamLayer = (*StreamLayer)(nil)
 
 // StreamLayer implements raft.StreamLayer to allow using a custom listener
@@ -607,6 +611,7 @@ type StreamLayer struct {
 	ln net.Listener
 }
 
+// NewStreamLayer returns a StreamLayer that accepts connections from ln.
 func NewStreamLayer(ln net.Listener) *StreamLayer {
 	return &StreamLayer{
 		ln: ln,

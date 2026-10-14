@@ -1,3 +1,4 @@
+// Package logger configures zerolog and adapts it for other log interfaces.
 package logger
 
 import (
@@ -10,7 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Config holds logger configuration
+// Config holds logger configuration.
 type Config struct {
 	Level       string
 	Development bool

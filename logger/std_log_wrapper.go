@@ -6,14 +6,17 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// ZerologWriter adapts zerolog to io.Writer for standard library log
+// ZerologWriter adapts zerolog to io.Writer for the standard library log package.
 type ZerologWriter struct {
 	logger zerolog.Logger
 }
 
+// NewZerologWriter returns a ZerologWriter that writes to logger.
 func NewZerologWriter(logger zerolog.Logger) *ZerologWriter {
 	return &ZerologWriter{logger}
 }
+
+// Write logs p at the level found in its [LEVEL] prefix, defaulting to info.
 func (w *ZerologWriter) Write(p []byte) (n int, err error) {
 	msg := strings.TrimSpace(string(p))
 
