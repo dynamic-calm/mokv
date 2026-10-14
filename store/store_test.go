@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dynamic-calm/mokv/store"
 )
@@ -52,7 +53,7 @@ func TestStore_SetAndGet(t *testing.T) {
 			s := store.New()
 
 			// Set the value
-			if err := s.Set(tt.key, tt.value); err != nil {
+			if err := s.Set(tt.key, tt.value, time.Time{}); err != nil {
 				t.Fatalf("Set() error = %v", err)
 			}
 
@@ -89,13 +90,13 @@ func TestStore_Update(t *testing.T) {
 
 	// Set initial value
 	initialValue := []byte("initial")
-	if err := s.Set(key, initialValue); err != nil {
+	if err := s.Set(key, initialValue, time.Time{}); err != nil {
 		t.Fatalf("Set() error = %v", err)
 	}
 
 	// Update value
 	updatedValue := []byte("updated")
-	if err := s.Set(key, updatedValue); err != nil {
+	if err := s.Set(key, updatedValue, time.Time{}); err != nil {
 		t.Fatalf("Set() error = %v", err)
 	}
 
@@ -119,7 +120,7 @@ func TestStore_Delete(t *testing.T) {
 		value := []byte("value")
 
 		// Set a value
-		if err := s.Set(key, value); err != nil {
+		if err := s.Set(key, value, time.Time{}); err != nil {
 			t.Fatalf("Set() error = %v", err)
 		}
 
@@ -172,7 +173,7 @@ func TestStore_List(t *testing.T) {
 
 		// Add test data
 		for k, v := range testData {
-			if err := s.Set(k, v); err != nil {
+			if err := s.Set(k, v, time.Time{}); err != nil {
 				t.Fatalf("Set() error = %v", err)
 			}
 		}
@@ -214,7 +215,7 @@ func TestStore_Concurrent(t *testing.T) {
 			for j := range operations {
 				key := string(rune('A' + (id % 26)))
 				value := []byte{byte(id), byte(j)}
-				if err := s.Set(key, value); err != nil {
+				if err := s.Set(key, value, time.Time{}); err != nil {
 					t.Errorf("Set() error = %v", err)
 				}
 			}
@@ -261,7 +262,7 @@ func TestStore_ConcurrentList(t *testing.T) {
 	for i := range 10 {
 		key := string(rune('A' + i))
 		value := []byte{byte(i)}
-		if err := s.Set(key, value); err != nil {
+		if err := s.Set(key, value, time.Time{}); err != nil {
 			t.Fatalf("Set() error = %v", err)
 		}
 	}
@@ -287,9 +288,66 @@ func TestStore_ConcurrentList(t *testing.T) {
 			defer wg.Done()
 			key := string(rune('Z' - id))
 			value := []byte{byte(id)}
-			_ = s.Set(key, value)
+			_ = s.Set(key, value, time.Time{})
 		}(i)
 	}
 
 	wg.Wait()
+}
+
+func TestStore_Expiry(t *testing.T) {
+	t.Parallel()
+
+	t.Run("expired key is hidden and reported", func(t *testing.T) {
+		s := store.New()
+		expiresAt := time.Now().Add(-time.Second)
+		if err := s.Set("old", []byte("old"), expiresAt); err != nil {
+			t.Fatalf("Set() error = %v", err)
+		}
+		if err := s.Set("fresh", []byte("fresh"), time.Now().Add(time.Hour)); err != nil {
+			t.Fatalf("Set() error = %v", err)
+		}
+
+		if _, err := s.Get("old"); err == nil {
+			t.Error("Get() expected error for expired key, got nil")
+		}
+		for val := range s.List() {
+			if string(val) == "old" {
+				t.Error("List() returned an expired value")
+			}
+		}
+
+		expired := s.Expired(time.Now())
+		if len(expired) != 1 || !expired["old"].Equal(expiresAt) {
+			t.Errorf("Expired() = %v, want only old at %v", expired, expiresAt)
+		}
+	})
+
+	t.Run("delete expired removes matching deadline", func(t *testing.T) {
+		s := store.New()
+		expiresAt := time.Now().Add(-time.Second)
+		_ = s.Set("key", []byte("value"), expiresAt)
+
+		if err := s.DeleteExpired("key", expiresAt); err != nil {
+			t.Fatalf("DeleteExpired() error = %v", err)
+		}
+		if len(s.Expired(time.Now())) != 0 {
+			t.Error("DeleteExpired() did not remove the key")
+		}
+	})
+
+	t.Run("delete expired keeps overwritten key", func(t *testing.T) {
+		s := store.New()
+		expiresAt := time.Now().Add(-time.Second)
+		_ = s.Set("key", []byte("old"), expiresAt)
+		_ = s.Set("key", []byte("new"), time.Now().Add(time.Hour))
+
+		if err := s.DeleteExpired("key", expiresAt); err != nil {
+			t.Fatalf("DeleteExpired() error = %v", err)
+		}
+		got, err := s.Get("key")
+		if err != nil || !bytes.Equal(got, []byte("new")) {
+			t.Errorf("Get() = %q, %v, want new", got, err)
+		}
+	})
 }

@@ -2,10 +2,12 @@ package mokv
 
 import (
 	"context"
+	"time"
 
 	"github.com/dynamic-calm/mokv/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -44,10 +46,13 @@ func (c *Client) Get(ctx context.Context, key string) ([]byte, error) {
 	return res.Value, nil
 }
 
-// Set stores a key-value pair, replicating it across the cluster.
-func (c *Client) Set(ctx context.Context, key string, value []byte) (bool, error) {
-	res, err := c.api.Set(ctx, &api.SetRequest{Key: key, Value: value})
-	return res.Ok, err
+// Set stores a key-value pair that expires after ttl, replicating it across the cluster.
+func (c *Client) Set(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
+	res, err := c.api.Set(ctx, &api.SetRequest{Key: key, Value: value, Ttl: durationpb.New(ttl)})
+	if err != nil {
+		return false, err
+	}
+	return res.Ok, nil
 }
 
 // Delete removes a key from the cluster.

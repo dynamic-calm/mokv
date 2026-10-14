@@ -21,6 +21,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/dynamic-calm/mokv/mokv"
 )
@@ -34,7 +35,7 @@ func main() {
 	key := `59°19'14.7"N`
 	val := []byte(`18°03'39.0"E`)
 
-	client.Set(ctx, key, val)
+	client.Set(ctx, key, val, time.Hour)
 	client.Get(ctx, key)
 	client.Delete(ctx, key)
 	client.GetServers(ctx)

@@ -9,6 +9,7 @@ package api
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	reflect "reflect"
 	sync "sync"
@@ -22,9 +23,11 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// GetRequest is the request message for the Get RPC.
 type GetRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// key is the key to retrieve.
+	Key           string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -66,10 +69,13 @@ func (x *GetRequest) GetKey() string {
 	return ""
 }
 
+// GetResponse is the response message for the Get RPC.
 type GetResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	Value         []byte                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// key is the key that was retrieved.
+	Key string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	// value is the value associated with the key.
+	Value         []byte `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -118,10 +124,15 @@ func (x *GetResponse) GetValue() []byte {
 	return nil
 }
 
+// SetRequest is the request message for the Set RPC.
 type SetRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	Value         []byte                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// key is the key to set.
+	Key string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	// value is the value to associate with the key.
+	Value []byte `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	// ttl is how long the entry lives after the write is accepted.
+	Ttl           *durationpb.Duration `protobuf:"bytes,3,opt,name=ttl,proto3" json:"ttl,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -170,9 +181,18 @@ func (x *SetRequest) GetValue() []byte {
 	return nil
 }
 
+func (x *SetRequest) GetTtl() *durationpb.Duration {
+	if x != nil {
+		return x.Ttl
+	}
+	return nil
+}
+
+// SetResponse is the response message for the Set RPC.
 type SetResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ok indicates whether the operation was successful.
+	Ok            bool `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -214,9 +234,11 @@ func (x *SetResponse) GetOk() bool {
 	return false
 }
 
+// DeleteRequest is the request message for the Delete RPC.
 type DeleteRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// key is the key to delete.
+	Key           string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -258,9 +280,11 @@ func (x *DeleteRequest) GetKey() string {
 	return ""
 }
 
+// DeleteResponse is the response message for the Delete RPC.
 type DeleteResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ok indicates whether the operation was successful.
+	Ok            bool `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -302,11 +326,15 @@ func (x *DeleteResponse) GetOk() bool {
 	return false
 }
 
+// Server represents a server in the cluster.
 type Server struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	RpcAddr       string                 `protobuf:"bytes,2,opt,name=rpc_addr,json=rpcAddr,proto3" json:"rpc_addr,omitempty"`
-	IsLeader      bool                   `protobuf:"varint,3,opt,name=is_leader,json=isLeader,proto3" json:"is_leader,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// id is the unique identifier of the server.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// rpc_addr is the RPC address of the server.
+	RpcAddr string `protobuf:"bytes,2,opt,name=rpc_addr,json=rpcAddr,proto3" json:"rpc_addr,omitempty"`
+	// is_leader indicates whether the server is the current leader.
+	IsLeader      bool `protobuf:"varint,3,opt,name=is_leader,json=isLeader,proto3" json:"is_leader,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -362,9 +390,11 @@ func (x *Server) GetIsLeader() bool {
 	return false
 }
 
+// GetServersResponse is the response message for the GetServers RPC.
 type GetServersResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Servers       []*Server              `protobuf:"bytes,1,rep,name=servers,proto3" json:"servers,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// servers is the list of servers in the cluster.
+	Servers       []*Server `protobuf:"bytes,1,rep,name=servers,proto3" json:"servers,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -410,17 +440,18 @@ var File_api_kv_proto protoreflect.FileDescriptor
 
 const file_api_kv_proto_rawDesc = "" +
 	"\n" +
-	"\fapi/kv.proto\x12\x03api\x1a\x1bgoogle/protobuf/empty.proto\"\x1e\n" +
+	"\fapi/kv.proto\x12\x03api\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1egoogle/protobuf/duration.proto\"\x1e\n" +
 	"\n" +
 	"GetRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\"5\n" +
 	"\vGetResponse\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value\"4\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value\"a\n" +
 	"\n" +
 	"SetRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value\"\x1d\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value\x12+\n" +
+	"\x03ttl\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x03ttl\"\x1d\n" +
 	"\vSetResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\"!\n" +
 	"\rDeleteRequest\x12\x10\n" +
@@ -455,33 +486,35 @@ func file_api_kv_proto_rawDescGZIP() []byte {
 
 var file_api_kv_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_api_kv_proto_goTypes = []any{
-	(*GetRequest)(nil),         // 0: api.GetRequest
-	(*GetResponse)(nil),        // 1: api.GetResponse
-	(*SetRequest)(nil),         // 2: api.SetRequest
-	(*SetResponse)(nil),        // 3: api.SetResponse
-	(*DeleteRequest)(nil),      // 4: api.DeleteRequest
-	(*DeleteResponse)(nil),     // 5: api.DeleteResponse
-	(*Server)(nil),             // 6: api.Server
-	(*GetServersResponse)(nil), // 7: api.GetServersResponse
-	(*emptypb.Empty)(nil),      // 8: google.protobuf.Empty
+	(*GetRequest)(nil),          // 0: api.GetRequest
+	(*GetResponse)(nil),         // 1: api.GetResponse
+	(*SetRequest)(nil),          // 2: api.SetRequest
+	(*SetResponse)(nil),         // 3: api.SetResponse
+	(*DeleteRequest)(nil),       // 4: api.DeleteRequest
+	(*DeleteResponse)(nil),      // 5: api.DeleteResponse
+	(*Server)(nil),              // 6: api.Server
+	(*GetServersResponse)(nil),  // 7: api.GetServersResponse
+	(*durationpb.Duration)(nil), // 8: google.protobuf.Duration
+	(*emptypb.Empty)(nil),       // 9: google.protobuf.Empty
 }
 var file_api_kv_proto_depIdxs = []int32{
-	6, // 0: api.GetServersResponse.servers:type_name -> api.Server
-	0, // 1: api.KV.Get:input_type -> api.GetRequest
-	2, // 2: api.KV.Set:input_type -> api.SetRequest
-	4, // 3: api.KV.Delete:input_type -> api.DeleteRequest
-	8, // 4: api.KV.List:input_type -> google.protobuf.Empty
-	8, // 5: api.KV.GetServers:input_type -> google.protobuf.Empty
-	1, // 6: api.KV.Get:output_type -> api.GetResponse
-	3, // 7: api.KV.Set:output_type -> api.SetResponse
-	5, // 8: api.KV.Delete:output_type -> api.DeleteResponse
-	1, // 9: api.KV.List:output_type -> api.GetResponse
-	7, // 10: api.KV.GetServers:output_type -> api.GetServersResponse
-	6, // [6:11] is the sub-list for method output_type
-	1, // [1:6] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	8, // 0: api.SetRequest.ttl:type_name -> google.protobuf.Duration
+	6, // 1: api.GetServersResponse.servers:type_name -> api.Server
+	0, // 2: api.KV.Get:input_type -> api.GetRequest
+	2, // 3: api.KV.Set:input_type -> api.SetRequest
+	4, // 4: api.KV.Delete:input_type -> api.DeleteRequest
+	9, // 5: api.KV.List:input_type -> google.protobuf.Empty
+	9, // 6: api.KV.GetServers:input_type -> google.protobuf.Empty
+	1, // 7: api.KV.Get:output_type -> api.GetResponse
+	3, // 8: api.KV.Set:output_type -> api.SetResponse
+	5, // 9: api.KV.Delete:output_type -> api.DeleteResponse
+	1, // 10: api.KV.List:output_type -> api.GetResponse
+	7, // 11: api.KV.GetServers:output_type -> api.GetServersResponse
+	7, // [7:12] is the sub-list for method output_type
+	2, // [2:7] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_api_kv_proto_init() }

@@ -5,10 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/dynamic-calm/mokv/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -37,7 +39,11 @@ func main() {
 
 	// Set
 	fmt.Println("\nSetting key 'hello' = 'world'")
-	setRes, err := client.Set(ctx, &api.SetRequest{Key: "hello", Value: []byte("world")})
+	setRes, err := client.Set(ctx, &api.SetRequest{
+		Key:   "hello",
+		Value: []byte("world"),
+		Ttl:   durationpb.New(time.Minute),
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
