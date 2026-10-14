@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"iter"
 	"net"
 	"strconv"
 	"sync"
@@ -11,8 +12,8 @@ import (
 	"time"
 
 	"github.com/dynamic-calm/mokv/api"
+	"github.com/dynamic-calm/mokv/kv"
 	"github.com/dynamic-calm/mokv/server"
-	"github.com/dynamic-calm/mokv/store"
 	"github.com/rs/zerolog/log"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -23,15 +24,23 @@ import (
 )
 
 type testKV struct {
-	*store.Store
+	store *kv.Store
+}
+
+func (t *testKV) Get(key string) ([]byte, error) {
+	return t.store.Get(key, time.Now())
 }
 
 func (t *testKV) Set(_ context.Context, key string, value []byte, expiresAt time.Time) error {
-	return t.Store.Set(key, value, expiresAt)
+	return t.store.Apply(kv.Set{Key: key, Value: value, ExpiresAt: expiresAt})
 }
 
 func (t *testKV) Delete(_ context.Context, key string) error {
-	return t.Store.Delete(key)
+	return t.store.Apply(kv.Delete{Key: key})
+}
+
+func (t *testKV) List() iter.Seq[kv.Entry] {
+	return t.store.List(time.Now())
 }
 
 func (t *testKV) GetServers() ([]*api.Server, error) {
@@ -51,7 +60,7 @@ func setupTestServer(t *testing.T) (api.KVClient, func()) {
 		t.Fatalf("failed to create listener: %v", err)
 	}
 
-	st := &testKV{Store: store.New()}
+	st := &testKV{store: kv.NewStore()}
 
 	srv := server.New(st, log.Logger)
 

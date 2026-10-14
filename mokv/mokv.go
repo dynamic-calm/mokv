@@ -19,7 +19,6 @@ import (
 	"github.com/dynamic-calm/mokv/discovery"
 	"github.com/dynamic-calm/mokv/kv"
 	"github.com/dynamic-calm/mokv/server"
-	"github.com/dynamic-calm/mokv/store"
 	"github.com/hashicorp/raft"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/soheilhy/cmux"
@@ -103,8 +102,7 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 	kvCfg.Raft.StreamLayer = kv.NewStreamLayer(raftLn)
 
 	// Initialize store and KV
-	st := store.New()
-	node, err := kv.New(st, kvCfg)
+	node, err := kv.New(kv.NewStore(), kvCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create KV store: %w", err)
 	}

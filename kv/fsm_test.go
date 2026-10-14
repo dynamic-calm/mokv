@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dynamic-calm/mokv/store"
 	"github.com/hashicorp/raft"
 )
 
@@ -30,10 +29,10 @@ func TestSnapshotRestore(t *testing.T) {
 		"forever":  {[]byte("c"), time.Time{}},
 	}
 
-	src := store.New()
+	src := NewStore()
 	for k, v := range want {
-		if err := src.Set(k, v.value, v.expiresAt); err != nil {
-			t.Fatalf("Set() error = %v", err)
+		if err := src.Apply(Set{Key: k, Value: v.value, ExpiresAt: v.expiresAt}); err != nil {
+			t.Fatalf("Apply() error = %v", err)
 		}
 	}
 
@@ -46,25 +45,24 @@ func TestSnapshotRestore(t *testing.T) {
 		t.Fatalf("Persist() error = %v", err)
 	}
 
-	dst := store.New()
-	_ = dst.Set("stale", []byte("stale"), time.Time{})
+	dst := NewStore()
+	_ = dst.Apply(Set{Key: "stale", Value: []byte("stale")})
 	if err := (&fsm{store: dst}).Restore(io.NopCloser(&sink)); err != nil {
 		t.Fatalf("Restore() error = %v", err)
 	}
 
 	got := 0
-	dst.Range(func(key string, value []byte, expiresAt time.Time) bool {
+	for e := range dst.All() {
 		got++
-		w, ok := want[key]
+		w, ok := want[e.Key]
 		if !ok {
-			t.Errorf("Restore() kept unexpected key %q", key)
-			return true
+			t.Errorf("Restore() kept unexpected key %q", e.Key)
+			continue
 		}
-		if !bytes.Equal(value, w.value) || !expiresAt.Equal(w.expiresAt) {
-			t.Errorf("key %q = (%q, %v), want (%q, %v)", key, value, expiresAt, w.value, w.expiresAt)
+		if !bytes.Equal(e.Value, w.value) || !e.ExpiresAt.Equal(w.expiresAt) {
+			t.Errorf("key %q = (%q, %v), want (%q, %v)", e.Key, e.Value, e.ExpiresAt, w.value, w.expiresAt)
 		}
-		return true
-	})
+	}
 	if got != len(want) {
 		t.Errorf("Restore() restored %d keys, want %d", got, len(want))
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dynamic-calm/mokv/api"
+	"github.com/dynamic-calm/mokv/kv"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/selector"
@@ -25,7 +26,7 @@ type Storer interface {
 	Get(key string) ([]byte, error)
 	Set(ctx context.Context, key string, value []byte, expiresAt time.Time) error
 	Delete(ctx context.Context, key string) error
-	List() iter.Seq[[]byte]
+	List() iter.Seq[kv.Entry]
 }
 
 // ServerProvider lists the servers in the cluster.
@@ -111,11 +112,11 @@ func (s *kvServer) Delete(ctx context.Context, req *api.DeleteRequest) (*api.Del
 
 // List streams all existing key-value pairs from the store to the client.
 func (s *kvServer) List(req *emptypb.Empty, stream grpc.ServerStreamingServer[api.GetResponse]) error {
-	for value := range s.kv.List() {
+	for e := range s.kv.List() {
 		if err := stream.Context().Err(); err != nil {
 			return err
 		}
-		if err := stream.Send(&api.GetResponse{Value: value}); err != nil {
+		if err := stream.Send(&api.GetResponse{Key: e.Key, Value: e.Value}); err != nil {
 			return err
 		}
 	}

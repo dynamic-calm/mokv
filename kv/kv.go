@@ -78,28 +78,17 @@ type Config struct {
 	DataDir string
 }
 
-// Storer is the local storage the Raft FSM applies entries to.
-type Storer interface {
-	Get(key string) ([]byte, error)
-	Set(key string, value []byte, expiresAt time.Time) error
-	Delete(key string) error
-	DeleteExpired(key string, expiresAt time.Time) error
-	Expired(now time.Time) map[string]time.Time
-	Range(fn func(key string, value []byte, expiresAt time.Time) bool)
-	List() iter.Seq[[]byte]
-}
-
 // KV is a distributed key-value store implementation using Raft consensus.
 type KV struct {
 	cfg   *Config
-	store Storer
+	store *Store
 	raft  *raft.Raft
 	done  chan struct{}
 	wg    sync.WaitGroup
 }
 
 // New creates and initializes a new distributed KV.
-func New(store Storer, cfg *Config) (*KV, error) {
+func New(store *Store, cfg *Config) (*KV, error) {
 	kv := &KV{
 		cfg:   cfg,
 		store: store,
@@ -139,13 +128,13 @@ func (kv *KV) expire(now time.Time) {
 
 	// Submit all deletes before waiting so Raft can batch them.
 	futures := make(map[string]raft.ApplyFuture, len(expired))
-	for key, expiresAt := range expired {
-		b, err := encodeRequest(RequestTypeExpire, &api.DeleteRequest{Key: key}, expiresAt)
+	for _, e := range expired {
+		b, err := encodeRequest(RequestTypeExpire, &api.DeleteRequest{Key: e.Key}, e.ExpiresAt)
 		if err != nil {
-			log.Error().Err(err).Str("key", key).Msg("failed to encode expire request")
+			log.Error().Err(err).Str("key", e.Key).Msg("failed to encode expire request")
 			continue
 		}
-		futures[key] = kv.raft.Apply(b, RaftTimeout)
+		futures[e.Key] = kv.raft.Apply(b, RaftTimeout)
 	}
 
 	for key, future := range futures {
@@ -158,7 +147,7 @@ func (kv *KV) expire(now time.Time) {
 
 // Get retrieves a value from the local store.
 func (kv *KV) Get(key string) ([]byte, error) {
-	return kv.store.Get(key)
+	return kv.store.Get(key, time.Now())
 }
 
 // Set applies a set operation to the distributed store via Raft.
@@ -180,9 +169,9 @@ func (kv *KV) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-// List returns an iterator over all unexpired values in the local store.
-func (kv *KV) List() iter.Seq[[]byte] {
-	return kv.store.List()
+// List returns an iterator over all unexpired entries in the local store.
+func (kv *KV) List() iter.Seq[Entry] {
+	return kv.store.List(time.Now())
 }
 
 // GetServers retrieves the current list of servers in the Raft configuration.
@@ -463,7 +452,7 @@ func (kv *KV) setupRaft(dataDir string) error {
 }
 
 type fsm struct {
-	store Storer
+	store *Store
 }
 
 var _ raft.FSM = (*fsm)(nil)
@@ -484,55 +473,33 @@ func (f *fsm) Apply(l *raft.Log) any {
 		}
 	}
 
+	cmd, err := decodeCommand(reqType, data, expiresAt)
+	if err != nil {
+		return err
+	}
+	return f.store.Apply(cmd)
+}
+
+// decodeCommand decodes the request in b into the Command of reqType.
+func decodeCommand(reqType RequestType, b []byte, expiresAt time.Time) (Command, error) {
 	switch reqType {
 	case RequestTypeSet, RequestTypeSetWithExpiry:
-		return f.applySet(data, expiresAt)
-	case RequestTypeDelete:
-		return f.applyDelete(data)
-	case RequestTypeExpire:
-		return f.applyExpire(data, expiresAt)
+		var req api.SetRequest
+		if err := proto.Unmarshal(b, &req); err != nil {
+			return nil, err
+		}
+		return Set{Key: req.Key, Value: req.Value, ExpiresAt: expiresAt}, nil
+	case RequestTypeDelete, RequestTypeExpire:
+		var req api.DeleteRequest
+		if err := proto.Unmarshal(b, &req); err != nil {
+			return nil, err
+		}
+		if reqType == RequestTypeExpire {
+			return Expire{Key: req.Key, ExpiresAt: expiresAt}, nil
+		}
+		return Delete{Key: req.Key}, nil
 	}
-	return nil
-}
-
-func (f *fsm) applySet(b []byte, expiresAt time.Time) any {
-	var req api.SetRequest
-	err := proto.Unmarshal(b, &req)
-	if err != nil {
-		return err
-	}
-
-	err = f.store.Set(req.Key, req.Value, expiresAt)
-	if err != nil {
-		return err
-	}
-	return &api.SetResponse{Ok: true}
-}
-
-func (f *fsm) applyDelete(b []byte) any {
-	var req api.DeleteRequest
-	err := proto.Unmarshal(b, &req)
-	if err != nil {
-		return err
-	}
-	err = f.store.Delete(req.Key)
-	if err != nil {
-		return err
-	}
-	return &api.DeleteResponse{Ok: true}
-}
-
-func (f *fsm) applyExpire(b []byte, expiresAt time.Time) any {
-	var req api.DeleteRequest
-	err := proto.Unmarshal(b, &req)
-	if err != nil {
-		return err
-	}
-	err = f.store.DeleteExpired(req.Key, expiresAt)
-	if err != nil {
-		return err
-	}
-	return &api.DeleteResponse{Ok: true}
+	return nil, fmt.Errorf("unknown request type %d", reqType)
 }
 
 // Snapshot creates a snapshot of the current state of the store.
@@ -541,19 +508,13 @@ func (f *fsm) applyExpire(b []byte, expiresAt time.Time) any {
 // the snapshot matches the replicated state exactly.
 func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
 	var buf bytes.Buffer
-	var err error
-	f.store.Range(func(key string, value []byte, expiresAt time.Time) bool {
-		var b []byte
-		b, err = encodeRequest(RequestTypeSetWithExpiry, &api.SetRequest{Key: key, Value: value}, expiresAt)
+	for e := range f.store.All() {
+		b, err := encodeRequest(RequestTypeSetWithExpiry, &api.SetRequest{Key: e.Key, Value: e.Value}, e.ExpiresAt)
 		if err != nil {
-			return false
+			return nil, fmt.Errorf("failed to encode snapshot entry: %w", err)
 		}
 		buf.Write(binary.BigEndian.AppendUint64(nil, uint64(len(b))))
 		buf.Write(b)
-		return true
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode snapshot entry: %w", err)
 	}
 	return &snapshot{data: buf.Bytes()}, nil
 }
@@ -579,10 +540,7 @@ func (f *fsm) Restore(r io.ReadCloser) error {
 	defer func() { _ = r.Close() }()
 
 	// Discard the previous state, as required by raft.FSM.
-	f.store.Range(func(key string, _ []byte, _ time.Time) bool {
-		_ = f.store.Delete(key)
-		return true
-	})
+	f.store.Reset()
 
 	b := make([]byte, lenWidth)
 	for {

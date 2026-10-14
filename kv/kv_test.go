@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/dynamic-calm/mokv/kv"
-	"github.com/dynamic-calm/mokv/store"
 	"github.com/soheilhy/cmux"
 )
 
@@ -14,7 +13,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	dir1 := t.TempDir()
 	dir2 := t.TempDir()
 
-	store1 := store.New()
+	store1 := kv.NewStore()
 	ln1, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener for node 1: %v", err)
@@ -44,7 +43,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	}()
 
 	// Setup second node
-	store2 := store.New()
+	store2 := kv.NewStore()
 	ln2, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener for node 2: %v", err)
@@ -119,7 +118,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	// Setup third node
 	dir3 := t.TempDir()
 
-	store3 := store.New()
+	store3 := kv.NewStore()
 	ln3, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener for node 3: %v", err)
@@ -169,7 +168,7 @@ func TestDistributedKVReplication(t *testing.T) {
 		t.Fatalf("failed to write expiring key to node 1: %v", err)
 	}
 	waitForValue(t, node3, "ttl-key", "ttl-value")
-	for name, st := range map[string]*store.Store{"node1": store1, "node3": store3} {
+	for name, st := range map[string]*kv.Store{"node1": store1, "node3": store3} {
 		waitFor(t, name+" to remove ttl-key", func() bool {
 			return !hasKey(st, "ttl-key")
 		})
@@ -203,11 +202,11 @@ func waitForValue(t *testing.T, node *kv.KV, key, want string) {
 }
 
 // hasKey reports whether st holds key, including expired entries.
-func hasKey(st *store.Store, key string) bool {
-	found := false
-	st.Range(func(k string, _ []byte, _ time.Time) bool {
-		found = k == key
-		return !found
-	})
-	return found
+func hasKey(st *kv.Store, key string) bool {
+	for e := range st.All() {
+		if e.Key == key {
+			return true
+		}
+	}
+	return false
 }
