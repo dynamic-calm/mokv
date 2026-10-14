@@ -49,9 +49,9 @@ type Config struct {
 	Bootstrap bool
 }
 
-// MOKV is a mokv node: the key-value service served over gRPC, replicated
+// Node is a mokv node: the key-value service served over gRPC, replicated
 // with Raft, with cluster membership through Serf.
-type MOKV struct {
+type Node struct {
 	svc           *kv.Service
 	node          *consensus.Node
 	membership    *discovery.Membership
@@ -64,7 +64,7 @@ type MOKV struct {
 
 // New creates a node from cfg and joins the cluster. Serving starts with
 // Listen.
-func New(cfg *Config) (_ *MOKV, err error) {
+func New(cfg *Config) (_ *Node, err error) {
 	host, _, err := net.SplitHostPort(cfg.BindAddr)
 	if err != nil {
 		return nil, fmt.Errorf("parsing bind address: %w", err)
@@ -122,7 +122,7 @@ func New(cfg *Config) (_ *MOKV, err error) {
 		return nil, fmt.Errorf("joining cluster: %w", err)
 	}
 
-	return &MOKV{
+	return &Node{
 		svc:           svc,
 		node:          node,
 		membership:    membership,
@@ -139,7 +139,7 @@ func New(cfg *Config) (_ *MOKV, err error) {
 
 // Listen serves gRPC, Raft and metrics until ctx is done or a signal is
 // received, then shuts the node down.
-func (m *MOKV) Listen(ctx context.Context) error {
+func (m *Node) Listen(ctx context.Context) error {
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
@@ -187,7 +187,7 @@ func (m *MOKV) Listen(ctx context.Context) error {
 	return g.Wait()
 }
 
-func (m *MOKV) close(ctx context.Context) error {
+func (m *Node) close(ctx context.Context) error {
 	var errs []error
 
 	if err := m.metricsServer.Shutdown(ctx); err != nil {
