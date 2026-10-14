@@ -77,9 +77,9 @@ func setupTestServer(t *testing.T) (api.KVClient, func()) {
 	client := api.NewKVClient(clientConn)
 
 	cleanup := func() {
-		clientConn.Close()
+		_ = clientConn.Close()
 		srv.Stop()
-		listener.Close()
+		_ = listener.Close()
 	}
 
 	return client, cleanup
@@ -287,12 +287,9 @@ func TestConcurrency(t *testing.T) {
 
 	t.Run("concurrent sets", func(t *testing.T) {
 		var wg sync.WaitGroup
-		wg.Add(goroutines)
 
 		for i := range goroutines {
-			go func(i int) {
-				defer wg.Done()
-
+			wg.Go(func() {
 				setReq := &api.SetRequest{
 					Key:   "test_key" + strconv.Itoa(i),
 					Value: expected,
@@ -306,7 +303,7 @@ func TestConcurrency(t *testing.T) {
 				if !setRes.Ok {
 					t.Errorf("Set() returned Ok = false, want true")
 				}
-			}(i)
+			})
 		}
 
 		wg.Wait()
@@ -314,12 +311,9 @@ func TestConcurrency(t *testing.T) {
 
 	t.Run("concurrent gets", func(t *testing.T) {
 		var wg sync.WaitGroup
-		wg.Add(goroutines)
 
 		for i := range goroutines {
-			go func(i int) {
-				defer wg.Done()
-
+			wg.Go(func() {
 				getReq := &api.GetRequest{Key: "test_key" + strconv.Itoa(i)}
 				getRes, err := client.Get(ctx, getReq)
 				if err != nil {
@@ -329,7 +323,7 @@ func TestConcurrency(t *testing.T) {
 				if !bytes.Equal(getRes.Value, expected) {
 					t.Errorf("Get() = %q, want %q", getRes.Value, expected)
 				}
-			}(i)
+			})
 		}
 
 		wg.Wait()

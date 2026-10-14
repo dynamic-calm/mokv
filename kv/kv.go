@@ -576,7 +576,7 @@ func (s *snapshot) Release() {}
 
 // Restore replaces the store state with the one in the snapshot.
 func (f *fsm) Restore(r io.ReadCloser) error {
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	// Discard the previous state, as required by raft.FSM.
 	f.store.Range(func(key string, _ []byte, _ time.Time) bool {
@@ -631,7 +631,7 @@ func (s *StreamLayer) Dial(
 	}
 	// Identify to mux this is a raft RPC
 	if _, err := conn.Write([]byte{byte(RaftRPC)}); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 	return conn, nil
@@ -648,12 +648,12 @@ func (s *StreamLayer) Accept() (net.Conn, error) {
 	b := make([]byte, 1)
 	_, err = conn.Read(b)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("failed to read raft identifier: %w", err)
 
 	}
 	if !bytes.Equal([]byte{byte(RaftRPC)}, b) {
-		conn.Close()
+		_ = conn.Close()
 		return nil, ErrNotRaftRPC
 	}
 	return conn, nil

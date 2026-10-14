@@ -23,7 +23,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer cc.Close()
+	defer func() { _ = cc.Close() }()
 
 	client := api.NewKVClient(cc)
 	ctx := context.Background()

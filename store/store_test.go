@@ -205,46 +205,40 @@ func TestStore_Concurrent(t *testing.T) {
 	const operations = 100
 
 	var wg sync.WaitGroup
-	wg.Add(goroutines)
 
 	// Concurrent writes
 	for i := range goroutines {
-		go func(id int) {
-			defer wg.Done()
+		wg.Go(func() {
 			for j := range operations {
-				key := string(rune('A' + (id % 26)))
-				value := []byte{byte(id), byte(j)}
+				key := string(rune('A' + (i % 26)))
+				value := []byte{byte(i), byte(j)}
 				if err := s.Set(key, value, time.Time{}); err != nil {
 					t.Errorf("Set() error = %v", err)
 				}
 			}
-		}(i)
+		})
 	}
 
 	// Concurrent reads
-	wg.Add(goroutines)
 	for i := range goroutines {
-		go func(id int) {
-			defer wg.Done()
+		wg.Go(func() {
 			for range operations {
-				key := string(rune('A' + (id % 26)))
+				key := string(rune('A' + (i % 26)))
 				_, _ = s.Get(key) // May or may not exist
 			}
-		}(i)
+		})
 	}
 
 	// Concurrent deletes
-	wg.Add(goroutines / 2)
 	for i := range goroutines / 2 {
-		go func(id int) {
-			defer wg.Done()
-			for j := 0; j < operations; j++ {
-				key := string(rune('A' + (id % 26)))
+		wg.Go(func() {
+			for range operations {
+				key := string(rune('A' + (i % 26)))
 				if err := s.Delete(key); err != nil {
 					t.Errorf("Delete() error = %v", err)
 				}
 			}
-		}(i)
+		})
 	}
 
 	wg.Wait()
@@ -269,26 +263,22 @@ func TestStore_ConcurrentList(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Concurrent List operations
-	wg.Add(5)
 	for range 5 {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			count := 0
 			for range s.List() {
 				count++
 			}
-		}()
+		})
 	}
 
 	// Concurrent modifications while listing
-	wg.Add(5)
 	for i := range 5 {
-		go func(id int) {
-			defer wg.Done()
-			key := string(rune('Z' - id))
-			value := []byte{byte(id)}
+		wg.Go(func() {
+			key := string(rune('Z' - i))
+			value := []byte{byte(i)}
 			_ = s.Set(key, value, time.Time{})
-		}(i)
+		})
 	}
 
 	wg.Wait()

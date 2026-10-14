@@ -35,7 +35,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create node 1: %v", err)
 	}
-	t.Cleanup(func() { node1.Close() })
+	t.Cleanup(func() { _ = node1.Close() })
 
 	go func() {
 		if err := mux1.Serve(); err != nil {
@@ -65,7 +65,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create node 2: %v", err)
 	}
-	t.Cleanup(func() { node2.Close() })
+	t.Cleanup(func() { _ = node2.Close() })
 
 	go func() {
 		if err := mux2.Serve(); err != nil {
@@ -140,7 +140,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create node 3: %v", err)
 	}
-	t.Cleanup(func() { node3.Close() })
+	t.Cleanup(func() { _ = node3.Close() })
 
 	go func() {
 		if err := mux3.Serve(); err != nil {
