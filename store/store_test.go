@@ -12,8 +12,7 @@ import (
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	store := store.New()
-	if store == nil {
+	if s := store.New(); s == nil {
 		t.Fatal("store.New() returned nil")
 	}
 }

@@ -82,7 +82,7 @@ func TestRunE2E(t *testing.T) {
 		t.Fatalf("failed to get servers: %s", err)
 	}
 	if len(getServersRes.Servers) < 1 {
-		t.Fatal("we must have at least one server")
+		t.Fatalf("len(GetServers().Servers) = %d, want >= 1", len(getServersRes.Servers))
 	}
 
 	// Test metrics endpoint
@@ -92,6 +92,6 @@ func TestRunE2E(t *testing.T) {
 	}
 	defer metricsResp.Body.Close()
 	if metricsResp.StatusCode != http.StatusOK {
-		t.Fatalf("metrics endpoint returned %d", metricsResp.StatusCode)
+		t.Fatalf("GET /metrics status = %d, want %d", metricsResp.StatusCode, http.StatusOK)
 	}
 }

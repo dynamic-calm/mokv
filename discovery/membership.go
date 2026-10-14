@@ -5,6 +5,7 @@ package discovery
 import (
 	stdlog "log"
 	"net"
+	"sync"
 
 	"github.com/dynamic-calm/mokv/logger"
 	"github.com/rs/zerolog/log"
@@ -34,6 +35,8 @@ type Membership struct {
 	handler Handler
 	events  chan serf.Event
 	done    chan struct{}
+	leave   sync.Once
+	err     error
 }
 
 // NewMembership creates a Membership, starts Serf, and joins the cluster
@@ -53,13 +56,16 @@ func (m *Membership) Members() []serf.Member {
 }
 
 // Leave gracefully causes the local node to leave the Serf cluster and
-// shuts down Serf.
+// shuts down Serf. Calls after the first return the first result.
 func (m *Membership) Leave() error {
-	defer close(m.done)
-	if err := m.serf.Leave(); err != nil {
-		return err
-	}
-	return m.serf.Shutdown()
+	m.leave.Do(func() {
+		defer close(m.done)
+		if m.err = m.serf.Leave(); m.err != nil {
+			return
+		}
+		m.err = m.serf.Shutdown()
+	})
+	return m.err
 }
 
 func (m *Membership) isLocal(member serf.Member) bool {

@@ -2,7 +2,6 @@ package kv_test
 
 import (
 	"net"
-	"os"
 	"testing"
 	"time"
 
@@ -36,6 +35,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create node 1: %v", err)
 	}
+	t.Cleanup(func() { node1.Close() })
 
 	go func() {
 		if err := mux1.Serve(); err != nil {
@@ -45,7 +45,7 @@ func TestDistributedKVReplication(t *testing.T) {
 
 	// Setup second node
 	store2 := store.New()
-	ln2, err := net.Listen("tcp", "127.0.0.1:3002")
+	ln2, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener for node 2: %v", err)
 	}
@@ -65,6 +65,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create node 2: %v", err)
 	}
+	t.Cleanup(func() { node2.Close() })
 
 	go func() {
 		if err := mux2.Serve(); err != nil {
@@ -72,11 +73,12 @@ func TestDistributedKVReplication(t *testing.T) {
 		}
 	}()
 
-	time.Sleep(3 * time.Second)
+	if err := node1.WaitForLeader(5 * time.Second); err != nil {
+		t.Fatalf("node1.WaitForLeader() = %v, want nil", err)
+	}
 
 	// Join node2 to the cluster
-	dkv1 := node1
-	err = dkv1.Join("node-2", cfg2.Raft.BindAddr)
+	err = node1.Join("node-2", cfg2.Raft.BindAddr)
 	if err != nil {
 		t.Fatalf("failed to join node 2 to cluster: %v", err)
 	}
@@ -87,52 +89,38 @@ func TestDistributedKVReplication(t *testing.T) {
 		t.Fatalf("failed to write to node 1: %v", err)
 	}
 
-	time.Sleep(1 * time.Second)
-
 	// Read from node 2
-	value, err := node2.Get("test-key")
-	if err != nil {
-		t.Fatalf("failed to read from node 2: %v", err)
-	}
-	if string(value) != "test-value" {
-		t.Errorf("replication failed: got %s, want test-value", string(value))
-	}
+	waitForValue(t, node2, "test-key", "test-value")
 
 	// Test leader
-	servers, err := dkv1.GetServers()
+	servers, err := node1.GetServers()
 	if err != nil {
-		t.Fatalf("failed to get servers: %v", err)
+		t.Fatalf("node1.GetServers() = %v, want nil", err)
 	}
 	if len(servers) != 2 {
-		t.Fatal("we should have two servers")
+		t.Fatalf("len(node1.GetServers()) = %d, want 2", len(servers))
 	}
-
 	if !servers[0].IsLeader {
-		t.Fatalf("the node 1 should be the leader: %v", err)
+		t.Errorf("servers[0].IsLeader = false, want true")
 	}
-
 	if servers[1].IsLeader {
-		t.Fatalf("the node 2 should not be the leader: %v", err)
+		t.Errorf("servers[1].IsLeader = true, want false")
 	}
 
 	// Leave node 2
-	dkv1.Leave("node-2")
-	time.Sleep(1 * time.Second)
-	servers, err = dkv1.GetServers()
-	if err != nil {
-		t.Fatalf("failed to get servers: %v", err)
+	if err := node1.Leave("node-2"); err != nil {
+		t.Fatalf("node1.Leave(%q) = %v, want nil", "node-2", err)
 	}
-	if len(servers) != 1 {
-		t.Fatal("we should have one server")
-	}
+	waitFor(t, "node-2 to leave", func() bool {
+		servers, err := node1.GetServers()
+		return err == nil && len(servers) == 1
+	})
 
 	// Setup third node
 	dir3 := t.TempDir()
-	os.MkdirAll(dir3, 0755)
-	defer os.RemoveAll(dir3)
 
 	store3 := store.New()
-	ln3, err := net.Listen("tcp", "127.0.0.1:3003")
+	ln3, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener for node 3: %v", err)
 	}
@@ -150,8 +138,9 @@ func TestDistributedKVReplication(t *testing.T) {
 
 	node3, err := kv.New(store3, cfg3)
 	if err != nil {
-		t.Fatalf("failed to create node 2: %v", err)
+		t.Fatalf("failed to create node 3: %v", err)
 	}
+	t.Cleanup(func() { node3.Close() })
 
 	go func() {
 		if err := mux3.Serve(); err != nil {
@@ -159,12 +148,10 @@ func TestDistributedKVReplication(t *testing.T) {
 		}
 	}()
 
-	time.Sleep(1 * time.Second)
-
 	// Join node3 to the cluster
-	err = dkv1.Join("node-3", cfg3.Raft.BindAddr)
+	err = node1.Join("node-3", cfg3.Raft.BindAddr)
 	if err != nil {
-		t.Fatalf("failed to join node3  to cluster: %v", err)
+		t.Fatalf("failed to join node 3 to cluster: %v", err)
 	}
 
 	// Write data to node 1
@@ -172,41 +159,55 @@ func TestDistributedKVReplication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to write to node 1: %v", err)
 	}
-	time.Sleep(1 * time.Second)
 
 	// Read from node3
-	value, err = node3.Get("test-key2")
-	if err != nil {
-		t.Fatalf("failed to read from node 3: %v", err)
-	}
-	if string(value) != "test-value2" {
-		t.Errorf("replication failed: got %s, want test-value2", string(value))
-	}
+	waitForValue(t, node3, "test-key2", "test-value2")
 
 	// Write an expiring key and check the leader removes it on every node
 	err = node1.Set(t.Context(), "ttl-key", []byte("ttl-value"), time.Now().Add(2*time.Second))
 	if err != nil {
 		t.Fatalf("failed to write expiring key to node 1: %v", err)
 	}
-	time.Sleep(1 * time.Second)
-	if _, err := node3.Get("ttl-key"); err != nil {
-		t.Fatalf("expiring key should be readable before it expires: %v", err)
-	}
-	time.Sleep(1*time.Second + 2*kv.ExpireInterval)
+	waitForValue(t, node3, "ttl-key", "ttl-value")
 	for name, st := range map[string]*store.Store{"node1": store1, "node3": store3} {
-		if expired := st.Expired(time.Now()); len(expired) != 0 {
-			t.Errorf("%s still holds expired keys: %v", name, expired)
-		}
+		waitFor(t, name+" to remove ttl-key", func() bool {
+			return !hasKey(st, "ttl-key")
+		})
 	}
 
 	// Read from node2. Since it left no data should be replicated.
-	value, err = node2.Get("test-key2")
-	if err == nil {
-		t.Fatalf("we should not be able to read the data from a node that left the cluster: %v", err)
+	if value, err := node2.Get("test-key2"); err == nil {
+		t.Errorf("node2.Get(%q) = %q, nil, want error", "test-key2", value)
 	}
+}
 
-	if string(value) == "test-value2" {
-		t.Errorf("we read the data from a node not in the cluster")
+// waitFor polls cond until it returns true or the test times out.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
+}
 
+// waitForValue waits until node returns want for key.
+func waitForValue(t *testing.T, node *kv.KV, key, want string) {
+	t.Helper()
+	waitFor(t, key+" to replicate", func() bool {
+		got, err := node.Get(key)
+		return err == nil && string(got) == want
+	})
+}
+
+// hasKey reports whether st holds key, including expired entries.
+func hasKey(st *store.Store, key string) bool {
+	found := false
+	st.Range(func(k string, _ []byte, _ time.Time) bool {
+		found = k == key
+		return !found
+	})
+	return found
 }
