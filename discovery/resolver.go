@@ -128,10 +128,13 @@ func (r *Resolver) ResolveNow(resolver.ResolveNowOptions) {
 			),
 		})
 	}
-	r.clientConn.UpdateState(resolver.State{
+	err = r.clientConn.UpdateState(resolver.State{
 		Addresses:     addrs,
 		ServiceConfig: r.serviceConfig,
 	})
+	if err != nil {
+		log.Error().Err(err).Msg("failed to update resolver state")
+	}
 }
 
 // Close closes the resolver and the underlying connection to the discovery server.

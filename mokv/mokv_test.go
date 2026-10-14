@@ -44,7 +44,7 @@ func TestRunE2E(t *testing.T) {
 	}
 
 	go func() {
-		m.Listen(ctx)
+		_ = m.Listen(ctx)
 	}()
 
 	// Setup client connection
@@ -56,7 +56,7 @@ func TestRunE2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect: %s", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client := api.NewKVClient(conn)
 
@@ -90,7 +90,7 @@ func TestRunE2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get metrics: %s", err)
 	}
-	defer metricsResp.Body.Close()
+	defer func() { _ = metricsResp.Body.Close() }()
 	if metricsResp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /metrics status = %d, want %d", metricsResp.StatusCode, http.StatusOK)
 	}

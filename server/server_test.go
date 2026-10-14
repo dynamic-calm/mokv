@@ -77,9 +77,9 @@ func setupTestServer(t *testing.T) (api.KVClient, func()) {
 	client := api.NewKVClient(clientConn)
 
 	cleanup := func() {
-		clientConn.Close()
+		_ = clientConn.Close()
 		srv.Stop()
-		listener.Close()
+		_ = listener.Close()
 	}
 
 	return client, cleanup

@@ -1,0 +1,14 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - lll
+  settings:
+    lll:
+      line-length: 120
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

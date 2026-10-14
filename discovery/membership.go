@@ -99,7 +99,7 @@ func (m *Membership) setupSerf() error {
 	m.done = make(chan struct{})
 	config.EventCh = m.events
 	config.Tags = m.Tags
-	config.NodeName = m.MembershipConfig.NodeName
+	config.NodeName = m.NodeName
 
 	m.serf, err = serf.Create(config)
 	if err != nil {

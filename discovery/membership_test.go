@@ -55,7 +55,7 @@ func setupMember(t *testing.T, members []*discovery.Membership, port int) ([]*di
 	if err != nil {
 		t.Fatalf("error creating discovery: %v", err)
 	}
-	t.Cleanup(func() { m.Leave() })
+	t.Cleanup(func() { _ = m.Leave() })
 	members = append(members, m)
 	return members, h
 }
