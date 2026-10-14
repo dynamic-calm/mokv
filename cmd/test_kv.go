@@ -8,53 +8,39 @@ import (
 	"log"
 	"time"
 
-	"github.com/dynamic-calm/mokv/api"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/types/known/durationpb"
-	"google.golang.org/protobuf/types/known/emptypb"
+	"github.com/dynamic-calm/mokv/client"
 )
 
 func main() {
 	addr := flag.String("addr", "localhost:8400", "service address")
 	flag.Parse()
 
-	cc, err := grpc.NewClient(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	c, err := client.New(*addr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func() { _ = cc.Close() }()
+	defer func() { _ = c.Close() }()
 
-	client := api.NewKVClient(cc)
 	ctx := context.Background()
 
-	// Get Servers
 	fmt.Println("Getting servers:")
-	servers, err := client.GetServers(ctx, &emptypb.Empty{})
+	servers, err := c.Servers(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, s := range servers.Servers {
-		fmt.Printf("\t- %v -> is leader: %v\n", s.RpcAddr, s.IsLeader)
+	for _, s := range servers {
+		fmt.Printf("\t- %v -> is leader: %v\n", s.RPCAddr, s.IsLeader)
 	}
 
-	// Set
 	fmt.Println("\nSetting key 'hello' = 'world'")
-	setRes, err := client.Set(ctx, &api.SetRequest{
-		Key:   "hello",
-		Value: []byte("world"),
-		Ttl:   durationpb.New(time.Minute),
-	})
-	if err != nil {
+	if err := c.Set(ctx, "hello", []byte("world"), time.Minute); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Set OK: %v\n\n", setRes.Ok)
 
-	// Get
 	fmt.Println("Getting key 'hello'")
-	getRes, err := client.Get(ctx, &api.GetRequest{Key: "hello"})
+	value, err := c.Get(ctx, "hello")
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Got: %s = %s\n", getRes.Key, string(getRes.Value))
+	fmt.Printf("Got: hello = %s\n", value)
 }

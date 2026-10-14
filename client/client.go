@@ -29,15 +29,11 @@ type Server struct {
 
 // New connects to a mökv node at the given address.
 func New(addr string) (*Client, error) {
-	conn, err := grpc.NewClient(addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}
-	return &Client{
-		conn: conn,
-		api:  api.NewKVClient(conn),
-	}, nil
+	return &Client{conn: conn, api: api.NewKVClient(conn)}, nil
 }
 
 // Get retrieves a value by key. If the key does not exist, the error has
@@ -50,26 +46,20 @@ func (c *Client) Get(ctx context.Context, key string) ([]byte, error) {
 	return res.Value, nil
 }
 
-// Set stores a key-value pair that expires after ttl, replicating it across the cluster.
-func (c *Client) Set(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
-	res, err := c.api.Set(ctx, &api.SetRequest{Key: key, Value: value, Ttl: durationpb.New(ttl)})
-	if err != nil {
-		return false, err
-	}
-	return res.Ok, nil
+// Set stores value under key for ttl, replicating it across the cluster.
+func (c *Client) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	_, err := c.api.Set(ctx, &api.SetRequest{Key: key, Value: value, Ttl: durationpb.New(ttl)})
+	return err
 }
 
-// Delete removes a key from the cluster.
-func (c *Client) Delete(ctx context.Context, key string) (bool, error) {
-	res, err := c.api.Delete(ctx, &api.DeleteRequest{Key: key})
-	if err != nil {
-		return false, err
-	}
-	return res.Ok, nil
+// Delete removes key from the cluster.
+func (c *Client) Delete(ctx context.Context, key string) error {
+	_, err := c.api.Delete(ctx, &api.DeleteRequest{Key: key})
+	return err
 }
 
-// GetServers returns all nodes in the cluster.
-func (c *Client) GetServers(ctx context.Context) ([]Server, error) {
+// Servers returns all nodes in the cluster.
+func (c *Client) Servers(ctx context.Context) ([]Server, error) {
 	res, err := c.api.GetServers(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, err
