@@ -11,7 +11,7 @@ import (
 
 func init() {
 	balancer.Register(
-		base.NewBalancerBuilder(Name, &Builder{}, base.Config{}),
+		base.NewBalancerBuilder(Scheme, &Builder{}, base.Config{}),
 	)
 }
 

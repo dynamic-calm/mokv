@@ -37,7 +37,7 @@ func TestSnapshotRestore(t *testing.T) {
 		}
 	}
 
-	snap, err := (&fsm{kv: src}).Snapshot()
+	snap, err := (&fsm{store: src}).Snapshot()
 	if err != nil {
 		t.Fatalf("Snapshot() error = %v", err)
 	}
@@ -48,7 +48,7 @@ func TestSnapshotRestore(t *testing.T) {
 
 	dst := store.New()
 	_ = dst.Set("stale", []byte("stale"), time.Time{})
-	if err := (&fsm{kv: dst}).Restore(io.NopCloser(&sink)); err != nil {
+	if err := (&fsm{store: dst}).Restore(io.NopCloser(&sink)); err != nil {
 		t.Fatalf("Restore() error = %v", err)
 	}
 

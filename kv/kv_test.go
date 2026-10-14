@@ -23,7 +23,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	mux1 := cmux.New(ln1)
 	raftLn1 := mux1.Match(cmux.Any()) // For testing, accept any connection as Raft
 
-	cfg1 := &kv.KVConfig{
+	cfg1 := &kv.Config{
 		DataDir: dir1,
 	}
 	cfg1.Raft.BindAddr = ln1.Addr().String()
@@ -52,7 +52,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	mux2 := cmux.New(ln2)
 	raftLn2 := mux2.Match(cmux.Any())
 
-	cfg2 := &kv.KVConfig{
+	cfg2 := &kv.Config{
 		DataDir: dir2,
 	}
 	cfg2.Raft.BindAddr = ln2.Addr().String()
@@ -139,7 +139,7 @@ func TestDistributedKVReplication(t *testing.T) {
 	mux3 := cmux.New(ln3)
 	raftLn3 := mux3.Match(cmux.Any())
 
-	cfg3 := &kv.KVConfig{
+	cfg3 := &kv.Config{
 		DataDir: dir3,
 	}
 	cfg3.Raft.BindAddr = ln3.Addr().String()

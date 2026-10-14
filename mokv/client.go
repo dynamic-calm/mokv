@@ -19,7 +19,7 @@ type Client struct {
 
 // Server represents a node in the cluster.
 type Server struct {
-	RpcAddr  string
+	RPCAddr  string
 	IsLeader bool
 	ID       string
 }
@@ -72,7 +72,7 @@ func (c *Client) GetServers(ctx context.Context) ([]Server, error) {
 	}
 	servers := make([]Server, len(res.Servers))
 	for i, s := range res.Servers {
-		servers[i] = Server{RpcAddr: s.RpcAddr, IsLeader: s.IsLeader, ID: s.Id}
+		servers[i] = Server{RPCAddr: s.RpcAddr, IsLeader: s.IsLeader, ID: s.Id}
 	}
 	return servers, nil
 }

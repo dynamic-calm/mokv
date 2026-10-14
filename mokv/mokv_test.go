@@ -50,7 +50,7 @@ func TestRunE2E(t *testing.T) {
 	// Setup client connection
 	rpcAddr := "127.0.0.1:" + strconv.Itoa(cfg.RPCPort)
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("%s://%s", discovery.Name, rpcAddr),
+		fmt.Sprintf("%s://%s", discovery.Scheme, rpcAddr),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {

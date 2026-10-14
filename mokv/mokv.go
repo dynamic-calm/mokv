@@ -86,11 +86,11 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 
 	// Configure KV store
 	rpcPort := strconv.Itoa(cfg.RPCPort)
-	kvCFG := &kv.KVConfig{DataDir: cfg.DataDir}
-	kvCFG.Raft.BindAddr = raftAdvertiseAddr
-	kvCFG.Raft.RPCPort = rpcPort
-	kvCFG.Raft.LocalID = raft.ServerID(cfg.NodeName)
-	kvCFG.Raft.Bootstrap = cfg.Bootstrap
+	kvCfg := &kv.Config{DataDir: cfg.DataDir}
+	kvCfg.Raft.BindAddr = raftAdvertiseAddr
+	kvCfg.Raft.RPCPort = rpcPort
+	kvCfg.Raft.LocalID = raft.ServerID(cfg.NodeName)
+	kvCfg.Raft.Bootstrap = cfg.Bootstrap
 
 	// Configure Raft listener.
 	// If the first byte of the incoming connection is our RaftRPC constant,
@@ -109,11 +109,11 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 	grpcLn := myCmux.Match(cmux.Any())
 
 	// Setup Raft stream layer
-	kvCFG.Raft.StreamLayer = kv.NewStreamLayer(raftLn)
+	kvCfg.Raft.StreamLayer = kv.NewStreamLayer(raftLn)
 
 	// Initialize store and KV
-	store := store.New()
-	kv, err := kv.New(store, kvCFG)
+	st := store.New()
+	node, err := kv.New(st, kvCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create KV store: %w", err)
 	}
@@ -137,10 +137,10 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 		),
 	}
 
-	grpcServer := server.New(kv, log.Logger, serverOpts...)
+	grpcServer := server.New(node, log.Logger, serverOpts...)
 
 	// Initialize membership
-	membership, err := discovery.NewMembership(kv, discovery.MembershipConfig{
+	membership, err := discovery.NewMembership(node, discovery.MembershipConfig{
 		NodeName: cfg.NodeName,
 		BindAddr: cfg.BindAddr,
 		Tags: map[string]string{
@@ -159,7 +159,7 @@ func New(cfg *Config, getEnv GetEnv) (*MOKV, error) {
 	}
 
 	return &MOKV{
-		kv:            kv,
+		kv:            node,
 		cfg:           cfg,
 		getEnv:        getEnv,
 		grpcLn:        grpcLn,
